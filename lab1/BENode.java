@@ -13,6 +13,12 @@ import org.apache.thrift.transport.TFramedTransport;
 public class BENode {
   static Logger log;
 
+  public BENode(String hostFE, int portFE, int portBE) {
+    this.hostFE = hostFE;
+    this.portFE = portFE;
+    this.portBE = portBE;
+  }
+
   public static void main(String [] args) throws Exception {
     if (args.length != 3) {
       System.err.println("Usage: java BENode FE_host FE_port BE_port");
@@ -27,6 +33,7 @@ public class BENode {
     int portFE = Integer.parseInt(args[1]);
     int portBE = Integer.parseInt(args[2]);
     log.info("Launching BE node on port " + portBE + " at host " + getHostName());
+    BENode node = new BENode(hostFE, portFE, portBE);
 
     // launch Thrift server
     BcryptService.Processor processor = new BcryptService.Processor(new BcryptServiceHandler());
@@ -48,3 +55,4 @@ public class BENode {
     }
   }
 }
+
