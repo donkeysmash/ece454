@@ -11,7 +11,6 @@ public class BcryptServiceHandler implements BcryptService.Iface {
         String hashedPwd = BCrypt.hashpw(x, BCrypt.gensalt(logRounds));
         ret.add(hashedPwd);
       }
-      ret.add(oneHash);
       return ret;
     } catch (Exception e) {
       throw new IllegalArgument(e.getMessage());
@@ -23,7 +22,7 @@ public class BcryptServiceHandler implements BcryptService.Iface {
       int pwdListSize = password.size();
       int hashListSize = hash.size();
       if (pwdListSize != hashListSize) {
-        throw new Exception("password list size: " + pwdListSize ", hash list size: " + hashListSize);
+        throw new Exception("password list size: " + pwdListSize + ", hash list size: " + hashListSize);
       }
       List<Boolean> ret = new ArrayList<>(pwdListSize);
       for (int i = 0; i < pwdListSize; ++i) {
@@ -36,4 +35,9 @@ public class BcryptServiceHandler implements BcryptService.Iface {
       throw new IllegalArgument(e.getMessage());
     }
   }
+
+  public void ping(String hostname, short portBE) {
+    System.out.println(hostname + " " + portBE);
+  }
 }
+

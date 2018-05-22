@@ -21,6 +21,8 @@ echo --- Compiling Java
 $JAVA_CC -version
 $JAVA_CC gen-java/*.java -cp .:"lib/*"
 $JAVA_CC *.java -cp .:gen-java/:"lib/*":"jBCrypt-0.4/*"
+# /usr/lib/jvm/java-1.8.0/bin/javac gen-java/*.java -cp .:"lib/*"
+# /usr/lib/jvm/java-1.8.0/bin/javac *.java -cp .:gen-java/:"lib/*":"jBCrypt-0.4/*"
 
 echo --- Done, now run your code.
 #$JAVA -cp .:gen-java/:"lib/*":"jBCrypt-0.4/*" FENode 10424
