@@ -14,7 +14,7 @@ THRIFT_CC=/opt/bin/thrift
 $JAVA_CC gen-java/*.java -cp .:"lib/*"
 $JAVA_CC *.java -cp .:gen-java/:"lib/*":"jBCrypt-0.4/*"
 
-$JAVA -cp .:gen-java/:"lib/*":"jBCrypt-0.4/*" BENode ecelinux6 10424 10424
+$JAVA -cp .:gen-java/:"lib/*":"jBCrypt-0.4/*" BENode ecelinux5 10765 10765
 
 
 

@@ -21,25 +21,11 @@ public class Client {
       TTransport transport = new TFramedTransport(sock);
       TProtocol protocol = new TBinaryProtocol(transport);
       BcryptService.Client client = new BcryptService.Client(protocol);
-      transport.open();
-
-//      List<String> password = new ArrayList<>();
-//      password.add(args[2]);
-//      List<String> hash = client.hashPassword(password, (short)10);
-//      System.out.println("Password: " + password.get(0));
-//      System.out.println("Hash: " + hash.get(0));
-//      System.out.println("Positive check: " + client.checkPassword(password, hash));
-//      hash.set(0, "$2a$14$reBHJvwbb0UWqJHLyPTVF.6Ld5sFRirZx/bXMeMmeurJledKYdZmG");
-//      System.out.println("Negative check: " + client.checkPassword(password, hash));
-//      hash.set(0, "too short");
-//      System.out.println("Exception check: " + client.checkPassword(password, hash));
-      
-      System.out.println("opened");
       List<String> passwords = new ArrayList<>();
       for (int i = 0; i < 100; ++i) {
-        passwords.add("sompaomdfspofm");
+        passwords.add("sompaomdfspofm" + i);
       }
-      System.out.println("continued");
+      transport.open();
       List<String> hashed = client.hashPassword(passwords, (short)10);
       for (String x : hashed) {
         System.out.println(x);
@@ -52,3 +38,4 @@ public class Client {
     }
   }
 }
+

@@ -1,0 +1,48 @@
+import java.util.concurrent.CountDownLatch;
+import org.apache.thrift.*;
+import org.apache.thrift.async.*;
+import org.apache.thrift.transport.*;
+import org.apache.thrift.protocol.*;
+
+public class JavaAsyncClient {
+    static CountDownLatch latch = new CountDownLatch(10);
+    public static void main(String [] args) {
+    try {
+        TNonblockingTransport transport = new TNonblockingSocket(args[0], Integer.parseInt(args[1]));
+        TProtocolFactory protocolFactory = new TBinaryProtocol.Factory();
+        TAsyncClientManager clientManager = new TAsyncClientManager();
+        BcryptService.Client client = new BcryptService.AsyncClient(protocolFactory, clientManager, transport);
+
+        List<String> passwords = new ArrayList<>();
+        for (int i = 0; i < 100; ++i) {
+          passwords.add("sompaomdfspofm" + i);
+        }
+        transport.open();
+
+        latch.await();
+        transport.close();
+    } catch (Exception x) {
+        x.printStackTrace();
+    } 
+    }
+
+    static class HashPasswordCallback implements AsyncMethodCallback<String> {
+    private String arg;
+
+    public HashPasswordCallback (String arg) {
+        this.arg = arg;
+    }
+
+    public void onComplete(String response) {
+        System.out.println("password given : " + arg);
+        System.out.println("password hashed: " + response);
+        latch.countDown();
+    }
+    
+    public void onError(Exception e) {
+        e.printStackTrace();
+        latch.countDown();
+    }
+    }
+}
+
