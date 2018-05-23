@@ -33,6 +33,17 @@ public class Client {
 //      System.out.println("Negative check: " + client.checkPassword(password, hash));
 //      hash.set(0, "too short");
 //      System.out.println("Exception check: " + client.checkPassword(password, hash));
+      
+      System.out.println("opened");
+      List<String> passwords = new ArrayList<>();
+      for (int i = 0; i < 100; ++i) {
+        passwords.add("sompaomdfspofm");
+      }
+      System.out.println("continued");
+      List<String> hashed = client.hashPassword(passwords, (short)10);
+      for (String x : hashed) {
+        System.out.println(x);
+      }
 
 
       transport.close();
