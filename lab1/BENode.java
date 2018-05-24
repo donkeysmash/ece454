@@ -62,7 +62,7 @@ public class BENode {
 
   public void pingFE() throws Exception {
     this.FEtransport.open();
-    this.FEclient.ping(getHostName(), (short)this.portBE);
+    this.FEclient.heartbeatBE(getHostName(), (short)this.portBE);
     this.FEtransport.close();
   }
 

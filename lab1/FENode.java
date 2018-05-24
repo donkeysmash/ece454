@@ -1,16 +1,22 @@
+import java.net.InetAddress;
+
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.Logger;
 
 import org.apache.thrift.TProcessorFactory;
-import org.apache.thrift.protocol.TBinaryProtocol;
+import org.apache.thrift.protocol.*;
+import org.apache.thrift.transport.*;
 import org.apache.thrift.server.THsHaServer;
 import org.apache.thrift.server.TServer;
-import org.apache.thrift.transport.TNonblockingServerSocket;
-import org.apache.thrift.transport.TFramedTransport;
 
 
 public class FENode {
   static Logger log;
+  private int port;
+
+  public FENode(int port) {
+    this.port = port;
+  }
 
   public static void main(String [] args) throws Exception {
     if (args.length != 1) {
@@ -23,6 +29,7 @@ public class FENode {
     log = Logger.getLogger(FENode.class.getName());
 
     int portFE = Integer.parseInt(args[0]);
+    FENode node = new FENode(portFE);
     log.info("Launching FE node on port " + portFE);
 
     // launch Thrift server
@@ -34,6 +41,25 @@ public class FENode {
     sargs.processorFactory(new TProcessorFactory(processor));
     sargs.maxWorkerThreads(5);
     TServer server = new THsHaServer(sargs);
+    node.initFE();
     server.serve();
+  }
+
+  public void initFE() throws Exception {
+    TSocket sock = new TSocket(getHostName(), this.port);
+    TTransport transport = new TFramedTransport(sock);
+    TProtocol protocol = new TBinaryProtocol(transport);
+    BcryptService.Client client = new BcryptService.Client(protocol);
+    transport.open();
+    client.initFE(getHostName(), (short) this.port);
+    transport.close();
+  }
+
+  static String getHostName() {
+    try {
+      return InetAddress.getLocalHost().getHostName();
+    } catch (Exception e) {
+      return "localhost";
+    }
   }
 }
