@@ -11,8 +11,8 @@ import org.apache.thrift.transport.TTransportFactory;
 
 public class Client {
   public static void main(String [] args) {
-    if (args.length != 3) {
-      System.err.println("Usage: java Client FE_host FE_port password");
+    if (args.length != 2) {
+      System.err.println("Usage: java Client FE_host FE_port");
       System.exit(-1);
     }
 
@@ -27,13 +27,15 @@ public class Client {
       }
       passwords.add("");
       transport.open();
-      System.out.println("testing started");
+      System.out.println("testing started         -- size: " + passwords.size());
       List<String> hashed = client.hashPassword(passwords, (short)4);
-      System.out.println("is it even hashed? " + hashed.size());
+      System.out.println("hashPassword completed  -- size: " + hashed.size());
       for (String x : hashed) {
         System.out.println(x);
       }
+      hashed.set(0, "somebadstringthatisntevenhash");
       List<Boolean> checked = client.checkPassword(passwords, hashed);
+      System.out.println("chekcPassword completed -- size: " + hashed.size());
       for (boolean x : checked) {
         System.out.println(x);
       }

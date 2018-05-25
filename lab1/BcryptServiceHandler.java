@@ -49,7 +49,6 @@ public class BcryptServiceHandler implements BcryptService.Iface {
       hashPasswordLatch.await();
       return hashedPasswords;
     } catch (Exception e) {
-      System.out.println(e.getMessage());
       throw new IllegalArgument(e.getMessage());
     }
   }
@@ -83,9 +82,6 @@ public class BcryptServiceHandler implements BcryptService.Iface {
       int remainder = password.size() % numWorkers;
       List<String> pwdSublist;
       List<String> hashSublist;
-
-
-      // TODO Move the global list to within here
       int chunkStartIdx = 0;
       int chunkEndIdx = remainder > 0 ? numItemsInChunk + 1 : numItemsInChunk;
       remainder--;
@@ -120,7 +116,13 @@ public class BcryptServiceHandler implements BcryptService.Iface {
         if (onePwd.equals("") && oneHash.equals("")) {
           ret.add(i, Boolean.TRUE);
         } else {
-          ret.add(i, BCrypt.checkpw(onePwd, oneHash));
+          boolean result = false;
+          try {
+            result = BCrypt.checkpw(onePwd, oneHash);
+          } catch (Exception e) {
+            // do nothing
+          }
+          ret.add(i, result);
         }
       }
       return ret;
