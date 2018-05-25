@@ -11,8 +11,8 @@ import org.apache.thrift.transport.TTransportFactory;
 
 public class Client {
   public static void main(String [] args) {
-    if (args.length != 2) {
-      System.err.println("Usage: java Client FE_host FE_port");
+    if (args.length != 4) {
+      System.err.println("Usage: java Client FE_host FE_port length logrounds");
       System.exit(-1);
     }
 
@@ -21,25 +21,34 @@ public class Client {
       TTransport transport = new TFramedTransport(sock);
       TProtocol protocol = new TBinaryProtocol(transport);
       BcryptService.Client client = new BcryptService.Client(protocol);
-      List<String> passwords = new ArrayList<>();
-      for (int i = 0; i < 10; ++i) {
+
+      int lengthIwant = Integer.parseInt(args[2]);
+      short logRoundsIwant = Short.parseShort(args[3]);
+
+      List<String> passwords = new ArrayList<>(lengthIwant);
+      for (int i = 0; i < lengthIwant; ++i) {
         passwords.add("sompaomdfspofm" + i);
       }
       passwords.add("");
       transport.open();
       System.out.println("testing started         -- size: " + passwords.size());
-      List<String> hashed = client.hashPassword(passwords, (short)4);
+      System.out.println("                        -- logR: " + logRoundsIwant);
+      System.out.println();
+      long startTime = System.nanoTime();
+      List<String> hashed = client.hashPassword(passwords, logRoundsIwant);
+      long endTime = System.nanoTime();
+      long duration = (endTime - startTime) / 1000000;  //divide by 1000000 to get milliseconds.
       System.out.println("hashPassword completed  -- size: " + hashed.size());
-      for (String x : hashed) {
-        System.out.println(x);
-      }
+      System.out.println("                        -- time: " + duration + " ms");
+      System.out.println();
       hashed.set(0, "somebadstringthatisntevenhash");
+      startTime = System.nanoTime();
       List<Boolean> checked = client.checkPassword(passwords, hashed);
+      endTime = System.nanoTime();
+      duration = (endTime - startTime) / 1000000;  //divide by 1000000 to get milliseconds.
       System.out.println("chekcPassword completed -- size: " + hashed.size());
-      for (boolean x : checked) {
-        System.out.println(x);
-      }
-
+      System.out.println("                        -- time: " + duration + " ms");
+      System.out.println();
       transport.close();
     } catch (TException x) {
       x.printStackTrace();

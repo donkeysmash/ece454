@@ -6,9 +6,7 @@ import org.apache.log4j.Logger;
 import org.apache.thrift.TProcessorFactory;
 import org.apache.thrift.protocol.*;
 import org.apache.thrift.transport.*;
-import org.apache.thrift.server.THsHaServer;
-import org.apache.thrift.server.TServer;
-
+import org.apache.thrift.server.*;
 
 public class FENode {
   static Logger log;
@@ -28,13 +26,14 @@ public class FENode {
 
     // launch Thrift server
     BcryptService.Processor processor = new BcryptService.Processor(new BcryptServiceHandler());
-    TNonblockingServerSocket socket = new TNonblockingServerSocket(portFE);
-    THsHaServer.Args sargs = new THsHaServer.Args(socket);
+    TServerSocket socket = new TServerSocket(portFE);
+    TThreadPoolServer.Args sargs = new TThreadPoolServer.Args(socket);
     sargs.protocolFactory(new TBinaryProtocol.Factory());
     sargs.transportFactory(new TFramedTransport.Factory());
     sargs.processorFactory(new TProcessorFactory(processor));
     sargs.maxWorkerThreads(64);
-    TServer server = new THsHaServer(sargs);
+    TThreadPoolServer server = new TThreadPoolServer(sargs);
     server.serve();
   }
 }
+
