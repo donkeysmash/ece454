@@ -15,11 +15,10 @@ import org.apache.thrift.transport.TFramedTransport;
 
 public class BcryptServiceHandler implements BcryptService.Iface {
   private List<BcryptService.AsyncClient> BEClients = new ArrayList<>();
-  private static CountDownLatch hashPasswordLatch;
-  private static CountDownLatch checkPasswordLatch;
 
   public List<String> hashPassword(List<String> password, short logRounds) throws IllegalArgument, org.apache.thrift.TException {
     try {
+      System.out.println("[hashPassword] starting");
       if (password == null) throw new Exception("list of password is null");
       if (password.size() == 0) throw new Exception("list of password is empty");
       if (logRounds < 4 || logRounds > 31) throw new Exception("logRounds out of range [4,31]");
@@ -27,7 +26,7 @@ public class BcryptServiceHandler implements BcryptService.Iface {
       List<String> hashedPasswords = new ArrayList<>(Collections.nCopies(password.size(), ""));
       int numWorkers = BEClients.size() + 1;
       int numItemsInChunk = password.size() / numWorkers;
-      hashPasswordLatch = new CountDownLatch(numWorkers);
+      CountDownLatch hashPasswordLatch = new CountDownLatch(numWorkers);
       int remainder = password.size() % numWorkers;
       List<String> sublist;
       int chunkStartIdx = 0;
@@ -35,13 +34,15 @@ public class BcryptServiceHandler implements BcryptService.Iface {
       remainder--;
       for (BcryptService.AsyncClient client : BEClients) {
         sublist = password.subList(chunkStartIdx, chunkEndIdx);
-        client.hashPasswordBE(sublist, logRounds, new HashPasswordBECallback(hashedPasswords, chunkStartIdx));
+        client.hashPasswordBE(sublist, logRounds, new HashPasswordBECallback(hashPasswordLatch, hashedPasswords, chunkStartIdx));
         chunkStartIdx = chunkEndIdx;
         chunkEndIdx = remainder > 0 ? chunkStartIdx + numItemsInChunk + 1 : chunkStartIdx + numItemsInChunk;
         remainder--;
       }
       sublist = password.subList(chunkStartIdx, password.size());
+      System.out.println("[hashPassword] right before calling FE part, numRequest: " + numRequest);
       List<String> FEResult = this.hashPasswordBE(sublist, logRounds);
+      System.out.println("[hashPassword] FE part done numRequest: " + numRequest);
       for (int i = 0; i < FEResult.size(); ++i) {
         hashedPasswords.set(chunkStartIdx + i, FEResult.get(i));
       }
@@ -49,6 +50,7 @@ public class BcryptServiceHandler implements BcryptService.Iface {
       hashPasswordLatch.await();
       return hashedPasswords;
     } catch (Exception e) {
+      System.out.println("[hashPassword] " + e.getMessage());
       throw new IllegalArgument(e.getMessage());
     }
   }
@@ -62,6 +64,7 @@ public class BcryptServiceHandler implements BcryptService.Iface {
       }
       return ret;
     } catch (Exception e) {
+      System.out.println("[hashPasswordBE] " + e.getMessage());
       throw new IllegalArgument(e.getMessage());
     }
   }
@@ -78,7 +81,7 @@ public class BcryptServiceHandler implements BcryptService.Iface {
       List<Boolean> checkedHashes = new ArrayList<>(Collections.nCopies(password.size(), Boolean.FALSE));
       int numWorkers = BEClients.size() + 1;
       int numItemsInChunk = password.size() / numWorkers;
-      checkPasswordLatch = new CountDownLatch(numWorkers);
+      CountDownLatch checkPasswordLatch = new CountDownLatch(numWorkers);
       int remainder = password.size() % numWorkers;
       List<String> pwdSublist;
       List<String> hashSublist;
@@ -88,14 +91,16 @@ public class BcryptServiceHandler implements BcryptService.Iface {
       for (BcryptService.AsyncClient client : BEClients) {
         pwdSublist = password.subList(chunkStartIdx, chunkEndIdx);
         hashSublist = hash.subList(chunkStartIdx, chunkEndIdx);
-        client.checkPasswordBE(pwdSublist, hashSublist, new CheckPasswordBECallback(checkedHashes, chunkStartIdx));
+        client.checkPasswordBE(pwdSublist, hashSublist, new CheckPasswordBECallback(checkPasswordLatch, checkedHashes, chunkStartIdx));
         chunkStartIdx = chunkEndIdx;
         chunkEndIdx = remainder > 0 ? chunkStartIdx + numItemsInChunk + 1 : chunkStartIdx + numItemsInChunk;
         remainder--;
       }
       pwdSublist = password.subList(chunkStartIdx, password.size());
       hashSublist = hash.subList(chunkStartIdx, hash.size());
+      System.out.println("[checkPassword] right before calling FE part" );
       List<Boolean> FEResult = this.checkPasswordBE(pwdSublist, hashSublist);
+      System.out.println("[checkPassword] FE part done" );
       for (int i = 0; i < FEResult.size(); ++i) {
         checkedHashes.set(i + chunkStartIdx, FEResult.get(i));
       }
@@ -103,6 +108,7 @@ public class BcryptServiceHandler implements BcryptService.Iface {
       checkPasswordLatch.await();
       return checkedHashes;
     } catch (Exception e) {
+      System.out.println("[checkPassword] " + e.getMessage());
       throw new IllegalArgument(e.getMessage());
     }
   }
@@ -127,6 +133,7 @@ public class BcryptServiceHandler implements BcryptService.Iface {
       }
       return ret;
     } catch (Exception e) {
+      System.out.println("[checkPasswordBE] " + e.getMessage());
       throw new IllegalArgument(e.getMessage());
     }
   }
@@ -140,6 +147,7 @@ public class BcryptServiceHandler implements BcryptService.Iface {
       BcryptService.AsyncClient BEClient = new BcryptService.AsyncClient(protocolFactory, clientManager, transport);
       BEClients.add(BEClient);
     } catch (Exception e) {
+      System.out.println("[heartbeatBE] " + e.getMessage());
       throw new IllegalArgument(e.getMessage());
     }
   }
@@ -147,44 +155,48 @@ public class BcryptServiceHandler implements BcryptService.Iface {
   static class HashPasswordBECallback implements AsyncMethodCallback<List<String>> {
     private int startIndex;
     private List<String> hashedPasswords;
+    private CountDownLatch hashPasswordLatch;
 
-    public HashPasswordBECallback (List<String> hashedPasswords, int startIndex) {
+    public HashPasswordBECallback (CountDownLatch hashPasswordLatch, List<String> hashedPasswords, int startIndex) {
       this.startIndex = startIndex;
       this.hashedPasswords = hashedPasswords;
+      this.hashPasswordLatch = hashPasswordLatch;
     }
 
     public void onComplete(List<String> response) {
       for (int i = 0; i < response.size(); ++i) {
         this.hashedPasswords.set(this.startIndex + i, response.get(i));
       }
-      hashPasswordLatch.countDown();
+      this.hashPasswordLatch.countDown();
     }
 
     public void onError(Exception e) {
       e.printStackTrace();
-      hashPasswordLatch.countDown();
+      this.hashPasswordLatch.countDown();
     }
   }
 
   static class CheckPasswordBECallback implements AsyncMethodCallback<List<Boolean>> {
     private int startIndex;
     private List<Boolean> checkedHashes;
+    private CountDownLatch checkPasswordLatch;
 
-    public CheckPasswordBECallback (List<Boolean> checkedHashes, int startIndex) {
+    public CheckPasswordBECallback (CountDownLatch checkPasswordLatch, List<Boolean> checkedHashes, int startIndex) {
       this.startIndex = startIndex;
       this.checkedHashes = checkedHashes;
+      this.checkPasswordLatch = checkPasswordLatch;
     }
 
     public void onComplete(List<Boolean> response) {
       for (int i = 0; i < response.size(); ++i) {
         this.checkedHashes.set(this.startIndex + i, response.get(i));
       }
-      checkPasswordLatch.countDown();
+      this.checkPasswordLatch.countDown();
     }
 
     public void onError(Exception e) {
       e.printStackTrace();
-      checkPasswordLatch.countDown();
+      this.checkPasswordLatch.countDown();
     }
   }
 }

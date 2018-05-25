@@ -45,13 +45,14 @@ public class BENode {
 
     // launch Thrift server
     BcryptService.Processor processor = new BcryptService.Processor(new BcryptServiceHandler());
-    TServerSocket socket = new TServerSocket(portBE);
-    TThreadPoolServer.Args sargs = new TThreadPoolServer.Args(socket);
+    TNonblockingServerSocket socket = new TNonblockingServerSocket(portBE);
+    //TServerSocket socket = new TServerSocket(portBE);
+    THsHaServer.Args sargs = new THsHaServer.Args(socket);
     sargs.protocolFactory(new TBinaryProtocol.Factory());
     sargs.transportFactory(new TFramedTransport.Factory());
     sargs.processorFactory(new TProcessorFactory(processor));
     sargs.maxWorkerThreads(64);
-    TThreadPoolServer server = new TThreadPoolServer(sargs);
+    THsHaServer server = new THsHaServer(sargs);
     node.pingFE();
     server.serve();
   }
