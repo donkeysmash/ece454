@@ -14,7 +14,7 @@ import org.apache.thrift.protocol.TBinaryProtocol;
 import org.apache.thrift.transport.TFramedTransport;
 
 public class BcryptServiceHandler implements BcryptService.Iface {
-  private List<SocketInfo> BEsockets = new ArrayList<>();
+  private Set<SocketInfo> BEsockets = new HashSet<>();
 
   public List<String> hashPassword(List<String> password, short logRounds) throws IllegalArgument, org.apache.thrift.TException {
     try {
@@ -148,7 +148,6 @@ public class BcryptServiceHandler implements BcryptService.Iface {
 
   public void heartbeatBE(String hostname, short port) throws IllegalArgument, org.apache.thrift.TException {
     try {
-      //BcryptService.AsyncClient BEClient = new BcryptService.AsyncClient(protocolFactory, clientManager, transport);
       BEsockets.add(new SocketInfo(hostname, port));
     } catch (Exception e) {
       System.out.println("[heartbeatBE] " + e.getMessage());
@@ -156,7 +155,7 @@ public class BcryptServiceHandler implements BcryptService.Iface {
     }
   }
 
-  static class SocketInfo {
+  class SocketInfo {
     private short port;
     private String hostname;
     public SocketInfo(String hostname, short port) {
@@ -165,6 +164,20 @@ public class BcryptServiceHandler implements BcryptService.Iface {
     }
     public String getHostname() { return this.hostname; }
     public short getPort() { return this.port; }
+
+    @Override
+    public boolean equals(Object other) {
+      if (other == null) return false;
+      if (other == this) return true;
+      if (!(other instanceof SocketInfo)) return false;
+      SocketInfo otherInClass = (SocketInfo) other;
+      return otherInClass.getHostname().equals(this.hostname) && otherInClass.getPort() == this.port;
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(this.port, this.hostname);
+    }
   }
 
   static class HashPasswordBECallback implements AsyncMethodCallback<List<String>> {

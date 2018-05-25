@@ -1,4 +1,5 @@
 import java.net.InetAddress;
+import java.util.*;
 
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.Logger;
@@ -42,6 +43,8 @@ public class BENode {
     int portBE = Integer.parseInt(args[2]);
     log.info("Launching BE node on port " + portBE + " at host " + getHostName());
     BENode node = new BENode(hostFE, portFE, portBE);
+    PingHelper ping = new PingHelper(node);
+    Timer timer = new Timer();
 
     // launch Thrift server
     BcryptService.Processor processor = new BcryptService.Processor(new BcryptServiceHandler());
@@ -53,7 +56,7 @@ public class BENode {
     sargs.processorFactory(new TProcessorFactory(processor));
     sargs.maxWorkerThreads(64);
     THsHaServer server = new THsHaServer(sargs);
-    node.pingFE();
+    timer.schedule(ping, (long) 0, (long) 2355);
     server.serve();
   }
 
@@ -61,6 +64,21 @@ public class BENode {
     this.FEtransport.open();
     this.FEclient.heartbeatBE(getHostName(), (short)this.portBE);
     this.FEtransport.close();
+  }
+
+  static class PingHelper extends TimerTask {
+    private BENode beNode;
+    public PingHelper(BENode beNode) {
+      super();
+      this.beNode = beNode;
+    }
+    public void run() {
+      try {
+        this.beNode.pingFE();
+      } catch (Exception e) {
+        System.out.println("Exception-[PingHelper] " + e.getMessage());
+      }
+    }
   }
 
   static String getHostName() {
