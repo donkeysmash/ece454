@@ -15,9 +15,6 @@ import org.apache.thrift.transport.TFramedTransport;
 
 public class BcryptServiceHandler implements BcryptService.Iface {
   private List<BcryptService.AsyncClient> BEClients = new ArrayList<>();
-  private BcryptService.AsyncClient FEClient;
-  private static List<String> hashedPasswords;
-  private static List<Boolean> checkedHashes;
   private static CountDownLatch hashPasswordLatch;
   private static CountDownLatch checkPasswordLatch;
 
@@ -27,31 +24,28 @@ public class BcryptServiceHandler implements BcryptService.Iface {
       if (password.size() == 0) throw new Exception("list of password is empty");
       if (logRounds < 4 || logRounds > 31) throw new Exception("logRounds out of range [4,31]");
 
-      hashedPasswords = new ArrayList<>(Collections.nCopies(password.size(), ""));
+      List<String> hashedPasswords = new ArrayList<>(Collections.nCopies(password.size(), ""));
       int numWorkers = BEClients.size() + 1;
       int numItemsInChunk = password.size() / numWorkers;
       hashPasswordLatch = new CountDownLatch(numWorkers);
       int remainder = password.size() % numWorkers;
       List<String> sublist;
-      if (remainder > 0) {
-        sublist = password.subList(0, numItemsInChunk + 1);
+      int chunkStartIdx = 0;
+      int chunkEndIdx = remainder > 0 ? numItemsInChunk + 1 : numItemsInChunk;
+      remainder--;
+      for (BcryptService.AsyncClient client : BEClients) {
+        sublist = password.subList(chunkStartIdx, chunkEndIdx);
+        client.hashPasswordBE(sublist, logRounds, new HashPasswordBECallback(hashedPasswords, chunkStartIdx));
+        chunkStartIdx = chunkEndIdx;
+        chunkEndIdx = remainder > 0 ? chunkStartIdx + numItemsInChunk + 1 : chunkStartIdx + numItemsInChunk;
         remainder--;
-      } else {
-        sublist = password.subList(0, numItemsInChunk);
       }
-      FEClient.hashPasswordBE(sublist, logRounds, new HashPasswordBECallback(0));
-      for (int i = 1; i < numWorkers; ++i) {
-        BcryptService.AsyncClient client = BEClients.get(i - 1);
-        if (remainder > 0) {
-          sublist = password.subList(numItemsInChunk * i, (numItemsInChunk * (i + 1)) + 1);
-          remainder--;
-        } else {
-          sublist = password.subList(numItemsInChunk * i, numItemsInChunk * (i + 1));
-        }
-        client.hashPasswordBE(sublist, logRounds, new HashPasswordBECallback(numItemsInChunk * i));
+      sublist = password.subList(chunkStartIdx, password.size());
+      List<String> FEResult = this.hashPasswordBE(sublist, logRounds);
+      for (int i = 0; i < FEResult.size(); ++i) {
+        hashedPasswords.set(chunkStartIdx + i, FEResult.get(i));
       }
-
-      System.out.println("hashpassword request sent to BE");
+      hashPasswordLatch.countDown();
       hashPasswordLatch.await();
       return hashedPasswords;
     } catch (Exception e) {
@@ -82,24 +76,34 @@ public class BcryptServiceHandler implements BcryptService.Iface {
       if (pwdListSize != hashListSize) throw new Exception("password list size: " + pwdListSize + ", hash list size: " + hashListSize);
       if (pwdListSize == 0) throw new Exception("list of password is empty");
       if (hashListSize == 0) throw new Exception("list of hash is empty");
-      checkedHashes = new ArrayList<>(Collections.nCopies(password.size(), Boolean.FALSE));
-      int numItemsInChunk = password.size() / BEClients.size();
-      int remainder = password.size() % BEClients.size();
-      checkPasswordLatch = new CountDownLatch(BEClients.size());
-      for (int i = 0; i < BEClients.size(); ++i) {
-        BcryptService.AsyncClient client = BEClients.get(i);
-        List<String> pwdSublist;
-        List<String> hashSublist;
-        if (remainder > 0) {
-          pwdSublist = password.subList(numItemsInChunk * i, (numItemsInChunk * (i + 1)) + 1);
-          hashSublist = hash.subList(numItemsInChunk * i, (numItemsInChunk * (i + 1)) + 1);
-          remainder--;
-        } else {
-          pwdSublist = password.subList(numItemsInChunk * i, numItemsInChunk * (i + 1));
-          hashSublist = hash.subList(numItemsInChunk * i, numItemsInChunk * (i + 1));
-        }
-        client.checkPasswordBE(pwdSublist, hashSublist, new CheckPasswordBECallback(numItemsInChunk * i));
+      List<Boolean> checkedHashes = new ArrayList<>(Collections.nCopies(password.size(), Boolean.FALSE));
+      int numWorkers = BEClients.size() + 1;
+      int numItemsInChunk = password.size() / numWorkers;
+      checkPasswordLatch = new CountDownLatch(numWorkers);
+      int remainder = password.size() % numWorkers;
+      List<String> pwdSublist;
+      List<String> hashSublist;
+
+
+      // TODO Move the global list to within here
+      int chunkStartIdx = 0;
+      int chunkEndIdx = remainder > 0 ? numItemsInChunk + 1 : numItemsInChunk;
+      remainder--;
+      for (BcryptService.AsyncClient client : BEClients) {
+        pwdSublist = password.subList(chunkStartIdx, chunkEndIdx);
+        hashSublist = hash.subList(chunkStartIdx, chunkEndIdx);
+        client.checkPasswordBE(pwdSublist, hashSublist, new CheckPasswordBECallback(checkedHashes, chunkStartIdx));
+        chunkStartIdx = chunkEndIdx;
+        chunkEndIdx = remainder > 0 ? chunkStartIdx + numItemsInChunk + 1 : chunkStartIdx + numItemsInChunk;
+        remainder--;
       }
+      pwdSublist = password.subList(chunkStartIdx, password.size());
+      hashSublist = hash.subList(chunkStartIdx, hash.size());
+      List<Boolean> FEResult = this.checkPasswordBE(pwdSublist, hashSublist);
+      for (int i = 0; i < FEResult.size(); ++i) {
+        checkedHashes.set(i + chunkStartIdx, FEResult.get(i));
+      }
+      checkPasswordLatch.countDown();
       checkPasswordLatch.await();
       return checkedHashes;
     } catch (Exception e) {
@@ -138,29 +142,18 @@ public class BcryptServiceHandler implements BcryptService.Iface {
     }
   }
 
-  public void initFE(String hostname, short port) throws IllegalArgument, org.apache.thrift.TException {
-    try {
-      TNonblockingTransport transport = new TNonblockingSocket(hostname, port);
-      TProtocolFactory protocolFactory = new TBinaryProtocol.Factory();
-      TAsyncClientManager clientManager = new TAsyncClientManager();
-      FEClient = new BcryptService.AsyncClient(protocolFactory, clientManager, transport);
-    } catch (Exception e) {
-      throw new IllegalArgument(e.getMessage());
-    }
-
-  }
-
-
   static class HashPasswordBECallback implements AsyncMethodCallback<List<String>> {
     private int startIndex;
+    private List<String> hashedPasswords;
 
-    public HashPasswordBECallback (int startIndex) {
+    public HashPasswordBECallback (List<String> hashedPasswords, int startIndex) {
       this.startIndex = startIndex;
+      this.hashedPasswords = hashedPasswords;
     }
 
     public void onComplete(List<String> response) {
       for (int i = 0; i < response.size(); ++i) {
-        hashedPasswords.set(this.startIndex + i, response.get(i));
+        this.hashedPasswords.set(this.startIndex + i, response.get(i));
       }
       hashPasswordLatch.countDown();
     }
@@ -173,14 +166,16 @@ public class BcryptServiceHandler implements BcryptService.Iface {
 
   static class CheckPasswordBECallback implements AsyncMethodCallback<List<Boolean>> {
     private int startIndex;
+    private List<Boolean> checkedHashes;
 
-    public CheckPasswordBECallback (int startIndex) {
+    public CheckPasswordBECallback (List<Boolean> checkedHashes, int startIndex) {
       this.startIndex = startIndex;
+      this.checkedHashes = checkedHashes;
     }
 
     public void onComplete(List<Boolean> response) {
       for (int i = 0; i < response.size(); ++i) {
-        checkedHashes.set(this.startIndex + i, response.get(i));
+        this.checkedHashes.set(this.startIndex + i, response.get(i));
       }
       checkPasswordLatch.countDown();
     }

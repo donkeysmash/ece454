@@ -22,13 +22,13 @@ public class Client {
       TProtocol protocol = new TBinaryProtocol(transport);
       BcryptService.Client client = new BcryptService.Client(protocol);
       List<String> passwords = new ArrayList<>();
-      for (int i = 0; i < 31; ++i) {
+      for (int i = 0; i < 10; ++i) {
         passwords.add("sompaomdfspofm" + i);
       }
       passwords.add("");
       transport.open();
       System.out.println("testing started");
-      List<String> hashed = client.hashPassword(passwords, (short)12);
+      List<String> hashed = client.hashPassword(passwords, (short)4);
       System.out.println("is it even hashed? " + hashed.size());
       for (String x : hashed) {
         System.out.println(x);

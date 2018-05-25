@@ -12,11 +12,6 @@ import org.apache.thrift.server.TServer;
 
 public class FENode {
   static Logger log;
-  private int port;
-
-  public FENode(int port) {
-    this.port = port;
-  }
 
   public static void main(String [] args) throws Exception {
     if (args.length != 1) {
@@ -29,7 +24,6 @@ public class FENode {
     log = Logger.getLogger(FENode.class.getName());
 
     int portFE = Integer.parseInt(args[0]);
-    FENode node = new FENode(portFE);
     log.info("Launching FE node on port " + portFE);
 
     // launch Thrift server
@@ -39,27 +33,8 @@ public class FENode {
     sargs.protocolFactory(new TBinaryProtocol.Factory());
     sargs.transportFactory(new TFramedTransport.Factory());
     sargs.processorFactory(new TProcessorFactory(processor));
-    sargs.maxWorkerThreads(5);
+    sargs.maxWorkerThreads(64);
     TServer server = new THsHaServer(sargs);
-    node.initFE();
     server.serve();
-  }
-
-  public void initFE() throws Exception {
-    TSocket sock = new TSocket(getHostName(), this.port);
-    TTransport transport = new TFramedTransport(sock);
-    TProtocol protocol = new TBinaryProtocol(transport);
-    BcryptService.Client client = new BcryptService.Client(protocol);
-    transport.open();
-    client.initFE(getHostName(), (short) this.port);
-    transport.close();
-  }
-
-  static String getHostName() {
-    try {
-      return InetAddress.getLocalHost().getHostName();
-    } catch (Exception e) {
-      return "localhost";
-    }
   }
 }
