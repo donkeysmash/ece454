@@ -14,11 +14,11 @@ import org.apache.thrift.protocol.TBinaryProtocol;
 import org.apache.thrift.transport.TFramedTransport;
 
 public class BcryptServiceHandler implements BcryptService.Iface {
-  private Set<SocketInfo> BEsockets = new HashSet<>();
+  static private Set<SocketInfo> BEsockets = new HashSet<>();
 
   public List<String> hashPassword(List<String> password, short logRounds) throws IllegalArgument, org.apache.thrift.TException {
     try {
-      System.out.println("[hashPassword] starting");
+      System.out.println("[hashPassword] request received with size: " + password.size());
       if (password == null) throw new Exception("list of password is null");
       if (password.size() == 0) throw new Exception("list of password is empty");
       if (logRounds < 4 || logRounds > 31) throw new Exception("logRounds out of range [4,31]");
@@ -34,26 +34,28 @@ public class BcryptServiceHandler implements BcryptService.Iface {
       int chunkEndIdx = remainder > 0 ? numItemsInChunk + 1 : numItemsInChunk;
       remainder--;
       for (SocketInfo socket : BEsockets) {
+        System.out.println("[hashPassword] trying to reach BENode at " + socket.toString());
         TNonblockingTransport transport = new TNonblockingSocket(socket.getHostname(), socket.getPort());
         BcryptService.AsyncClient client = new BcryptService.AsyncClient(protocolFactory, clientManager, transport);
         sublist = password.subList(chunkStartIdx, chunkEndIdx);
-        client.hashPasswordBE(sublist, logRounds, new HashPasswordBECallback(transport, hashPasswordLatch, hashedPasswords, chunkStartIdx));
+        System.out.println("                           size of work: " + sublist.size());
+        client.hashPasswordBE(sublist, logRounds, new HashPasswordBECallback(this, sublist, logRounds, socket, transport, hashPasswordLatch, hashedPasswords, chunkStartIdx));
         chunkStartIdx = chunkEndIdx;
         chunkEndIdx = remainder > 0 ? chunkStartIdx + numItemsInChunk + 1 : chunkStartIdx + numItemsInChunk;
         remainder--;
       }
       sublist = password.subList(chunkStartIdx, password.size());
-      System.out.println("[hashPassword] right before calling FE part");
+      System.out.println("[hashPassword] giving some work for FE size: " + sublist.size());
       List<String> FEResult = this.hashPasswordBE(sublist, logRounds);
-      System.out.println("[hashPassword] FE part done numRequest");
       for (int i = 0; i < FEResult.size(); ++i) {
         hashedPasswords.set(chunkStartIdx + i, FEResult.get(i));
       }
       hashPasswordLatch.countDown();
       hashPasswordLatch.await();
+      System.out.println("[hashPassword] successful with size " + hashedPasswords.size() + "\n");
       return hashedPasswords;
     } catch (Exception e) {
-      System.out.println("[hashPassword] " + e.getMessage());
+      System.out.println("[hashPassword-exception] " + e.getMessage());
       throw new IllegalArgument(e.getMessage());
     }
   }
@@ -74,6 +76,7 @@ public class BcryptServiceHandler implements BcryptService.Iface {
 
   public List<Boolean> checkPassword(List<String> password, List<String> hash) throws IllegalArgument, org.apache.thrift.TException {
     try {
+      System.out.println("[checkPassword] request received with size: " + password.size());
       if (password == null) throw new Exception("list of password is null");
       if (hash == null) throw new Exception("list of hash is null");
       int pwdListSize = password.size();
@@ -94,28 +97,30 @@ public class BcryptServiceHandler implements BcryptService.Iface {
       int chunkEndIdx = remainder > 0 ? numItemsInChunk + 1 : numItemsInChunk;
       remainder--;
       for (SocketInfo socket : BEsockets) {
+        System.out.println("[checkPassword] trying to reach BENode at " + socket.toString());
         TNonblockingTransport transport = new TNonblockingSocket(socket.getHostname(), socket.getPort());
         BcryptService.AsyncClient client = new BcryptService.AsyncClient(protocolFactory, clientManager, transport);
         pwdSublist = password.subList(chunkStartIdx, chunkEndIdx);
+        System.out.println("                            size of work: " + pwdSublist.size());
         hashSublist = hash.subList(chunkStartIdx, chunkEndIdx);
-        client.checkPasswordBE(pwdSublist, hashSublist, new CheckPasswordBECallback(transport, checkPasswordLatch, checkedHashes, chunkStartIdx));
+        client.checkPasswordBE(pwdSublist, hashSublist, new CheckPasswordBECallback(this, pwdSublist, hashSublist, socket, transport, checkPasswordLatch, checkedHashes, chunkStartIdx));
         chunkStartIdx = chunkEndIdx;
         chunkEndIdx = remainder > 0 ? chunkStartIdx + numItemsInChunk + 1 : chunkStartIdx + numItemsInChunk;
         remainder--;
       }
       pwdSublist = password.subList(chunkStartIdx, password.size());
       hashSublist = hash.subList(chunkStartIdx, hash.size());
-      System.out.println("[checkPassword] right before calling FE part" );
+      System.out.println("[checkPassword] giving some work for FE size: " + pwdSublist.size());
       List<Boolean> FEResult = this.checkPasswordBE(pwdSublist, hashSublist);
-      System.out.println("[checkPassword] FE part done" );
       for (int i = 0; i < FEResult.size(); ++i) {
         checkedHashes.set(i + chunkStartIdx, FEResult.get(i));
       }
       checkPasswordLatch.countDown();
       checkPasswordLatch.await();
+      System.out.println("[checkPassword] successful with size " + checkedHashes.size() + "\n");
       return checkedHashes;
     } catch (Exception e) {
-      System.out.println("[checkPassword] " + e.getMessage());
+      System.out.println("[checkPassword-exception] " + e.getMessage());
       throw new IllegalArgument(e.getMessage());
     }
   }
@@ -178,19 +183,32 @@ public class BcryptServiceHandler implements BcryptService.Iface {
     public int hashCode() {
       return Objects.hash(this.port, this.hostname);
     }
+
+    @Override
+    public String toString() {
+      return this.hostname + ":" + this.port;
+    }
   }
 
   static class HashPasswordBECallback implements AsyncMethodCallback<List<String>> {
     private int startIndex;
     private List<String> hashedPasswords;
+    private List<String> original;
+    private short logRounds;
     private CountDownLatch hashPasswordLatch;
     private TNonblockingTransport transport;
+    private SocketInfo socketInfo;
+    private BcryptServiceHandler handler;
 
-    public HashPasswordBECallback (TNonblockingTransport transport, CountDownLatch hashPasswordLatch, List<String> hashedPasswords, int startIndex) {
+    public HashPasswordBECallback (BcryptServiceHandler handler, List<String> original, short logRounds, SocketInfo socketInfo, TNonblockingTransport transport, CountDownLatch hashPasswordLatch, List<String> hashedPasswords, int startIndex) {
       this.startIndex = startIndex;
       this.hashedPasswords = hashedPasswords;
       this.hashPasswordLatch = hashPasswordLatch;
+      this.socketInfo = socketInfo;
       this.transport = transport;
+      this.original = original;
+      this.logRounds = logRounds;
+      this.handler = handler;
     }
 
     public void onComplete(List<String> response) {
@@ -202,9 +220,20 @@ public class BcryptServiceHandler implements BcryptService.Iface {
     }
 
     public void onError(Exception e) {
-      e.printStackTrace();
-      this.transport.close();
-      this.hashPasswordLatch.countDown();
+      try {
+        System.out.println("[hassPasswordCB onError, trying redistribution] " + e.getMessage());
+        System.out.println("                                              @ " + this.socketInfo.toString());
+        this.transport.close();
+        BEsockets.remove(this.socketInfo);
+        List<String> response = this.handler.hashPassword(this.original, this.logRounds);
+        for (int i = 0; i < response.size(); ++i) {
+          this.hashedPasswords.set(this.startIndex + i, response.get(i));
+        }
+      } catch (Exception ex) {
+        System.out.println("[hashPasswordCB - redistributing Exception] " + ex.getMessage());
+      } finally {
+        this.hashPasswordLatch.countDown();
+      }
     }
   }
 
@@ -213,12 +242,20 @@ public class BcryptServiceHandler implements BcryptService.Iface {
     private List<Boolean> checkedHashes;
     private CountDownLatch checkPasswordLatch;
     private TNonblockingTransport transport;
+    private BcryptServiceHandler handler;
+    private List<String> passwords;
+    private List<String> hashes;
+    private SocketInfo socketInfo;
 
-    public CheckPasswordBECallback (TNonblockingTransport transport, CountDownLatch checkPasswordLatch, List<Boolean> checkedHashes, int startIndex) {
+    public CheckPasswordBECallback (BcryptServiceHandler handler, List<String> passwords, List<String> hashes, SocketInfo socketInfo, TNonblockingTransport transport, CountDownLatch checkPasswordLatch, List<Boolean> checkedHashes, int startIndex) {
       this.startIndex = startIndex;
       this.checkedHashes = checkedHashes;
       this.checkPasswordLatch = checkPasswordLatch;
       this.transport = transport;
+      this.handler = handler;
+      this.passwords = passwords;
+      this.hashes = hashes;
+      this.socketInfo = socketInfo;
     }
 
     public void onComplete(List<Boolean> response) {
@@ -230,9 +267,20 @@ public class BcryptServiceHandler implements BcryptService.Iface {
     }
 
     public void onError(Exception e) {
-      e.printStackTrace();
-      this.transport.close();
-      this.checkPasswordLatch.countDown();
+      try {
+        System.out.println("[checkPasswordCB onError, trying redistribution] " + e.getMessage());
+        System.out.println("                                               @ " + this.socketInfo.toString());
+        this.transport.close();
+        BEsockets.remove(this.socketInfo);
+        List<Boolean> response = this.handler.checkPassword(this.passwords, this.hashes);
+        for (int i = 0; i < response.size(); ++i) {
+          this.checkedHashes.set(this.startIndex + i, response.get(i));
+        }
+      } catch (Exception ex) {
+        System.out.println("[checkPasswordCB - redistributing Exception] " + ex.getMessage());
+      } finally {
+        this.checkPasswordLatch.countDown();
+      }
     }
   }
 }

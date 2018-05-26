@@ -14,8 +14,8 @@ public class Client {
   private static CountDownLatch checkPasswordLatch = new CountDownLatch(1);
 
   public static void main(String [] args) {
-    if (args.length != 4) {
-      System.err.println("Usage: java Client FE_host FE_port length logrounds");
+    if (args.length != 5) {
+      System.err.println("Usage: java Client FE_host FE_port length logrounds printResult(0 for false)");
       System.exit(-1);
     }
 
@@ -26,11 +26,12 @@ public class Client {
       BcryptService.AsyncClient client = new BcryptService.AsyncClient(pf, clientManage, transport);
 
       int lengthIwant = Integer.parseInt(args[2]);
+      int isPrintResult = Integer.parseInt(args[4]);
       short logRoundsIwant = Short.parseShort(args[3]);
 
       List<String> passwords = new ArrayList<>(lengthIwant);
       for (int i = 0; i < lengthIwant; ++i) {
-        passwords.add("sompaomdfspofm" + i);
+        passwords.add("testingpwd" + i);
       }
       passwords.add("");
       System.out.println("testing started         -- size: " + passwords.size());
@@ -47,18 +48,30 @@ public class Client {
       System.out.println();
       hashed.set(0, "somebadstringthatisntevenhash");
       startTime = System.nanoTime();
+      passwords.set(1, "apsodjfaspodfjadifferent apswoerw");
       List<Boolean> checked = new ArrayList<>(Collections.nCopies(passwords.size(), Boolean.FALSE));
       client.checkPassword(passwords, hashed, new CheckPasswordCallback(checked));
       checkPasswordLatch.await();
+      transport.close();
       endTime = System.nanoTime();
       duration = (endTime - startTime) / 1000000;  //divide by 1000000 to get milliseconds.
       System.out.println("chekcPassword completed -- size: " + hashed.size());
       System.out.println("                        -- time: " + duration + " ms");
       System.out.println();
-      transport.close();
+      if (isPrintResult != 0) {
+        System.out.println("Result of hashPassword");
+        for (int i = 0; i < hashed.size(); ++i) {
+          System.out.println((i + 1) + ") " + hashed.get(i));
+        }
+        System.out.println();
+        System.out.println("Result of checkPassword");
+        for (int i = 0; i < checked.size(); ++i) {
+          System.out.println((i + 1) + ") " + checked.get(i));
+        }
+      }
     } catch (Exception x) {
       x.printStackTrace();
-    } 
+    }
   }
 
   static class HashPasswordCallback implements AsyncMethodCallback<List<String>> {
