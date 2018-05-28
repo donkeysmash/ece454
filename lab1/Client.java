@@ -33,7 +33,7 @@ public class Client {
       for (int i = 0; i < lengthIwant; ++i) {
         passwords.add("testingpwd" + i);
       }
-      passwords.add("");
+      //passwords.add("");
       System.out.println("testing started         -- size: " + passwords.size());
       System.out.println("                        -- logR: " + logRoundsIwant);
       System.out.println();
@@ -46,9 +46,9 @@ public class Client {
       System.out.println("hashPassword completed  -- size: " + hashed.size());
       System.out.println("                        -- time: " + duration + " ms");
       System.out.println();
-      hashed.set(0, "somebadstringthatisntevenhash");
+      //hashed.set(0, "somebadstringthatisntevenhash");
       startTime = System.nanoTime();
-      passwords.set(1, "apsodjfaspodfjadifferent apswoerw");
+      //passwords.set(1, "apsodjfaspodfjadifferent apswoerw");
       List<Boolean> checked = new ArrayList<>(Collections.nCopies(passwords.size(), Boolean.FALSE));
       client.checkPassword(passwords, hashed, new CheckPasswordCallback(checked));
       checkPasswordLatch.await();
@@ -69,6 +69,17 @@ public class Client {
           System.out.println((i + 1) + ") " + checked.get(i));
         }
       }
+//
+//      System.out.println("\nexception testing");
+//      passwords = new ArrayList<>();
+//      for (int i = 0; i < 10; ++i) {
+//        passwords.add("asdpfowd" + i);
+//      }
+//      hashed = new ArrayList<>(Collections.nCopies(passwords.size(), ""));
+//      hashPasswordLatch = new CountDownLatch(1);
+//      client.hashPassword(passwords, logRoundsIwant, new HashPasswordCallback(hashed));
+
+
     } catch (Exception x) {
       x.printStackTrace();
     }
