@@ -15,17 +15,19 @@ import org.apache.thrift.transport.TFramedTransport;
 
 public class BcryptServiceHandler implements BcryptService.Iface {
   static private Set<SocketInfo> BEsockets = new HashSet<>();
+  static final int NUM_CORES = 4;
 
   public List<String> hashPassword(List<String> password, short logRounds) throws IllegalArgument, org.apache.thrift.TException {
     try {
       System.out.println("[hashPassword] request received with size: " + password.size());
+      System.out.println("                         available BENodes: " + BEsockets.size());
       if (password == null) throw new Exception("list of password is null");
       if (password.size() == 0) throw new Exception("list of password is empty");
       if (logRounds < 4 || logRounds > 31) throw new Exception("logRounds out of range [4,31]");
       TProtocolFactory protocolFactory = new TBinaryProtocol.Factory();
       TAsyncClientManager clientManager = new TAsyncClientManager();
       List<String> hashedPasswords = new ArrayList<>(Collections.nCopies(password.size(), ""));
-      int numWorkers = BEsockets.size() + 1;
+      int numWorkers = (BEsockets.size() * NUM_CORES) + 1;
       int numItemsInChunk = password.size() / numWorkers;
       CountDownLatch hashPasswordLatch = new CountDownLatch(numWorkers);
       int remainder = password.size() % numWorkers;
@@ -35,14 +37,17 @@ public class BcryptServiceHandler implements BcryptService.Iface {
       remainder--;
       for (SocketInfo socket : BEsockets) {
         System.out.println("[hashPassword] trying to reach BENode at " + socket.toString());
-        TNonblockingTransport transport = new TNonblockingSocket(socket.getHostname(), socket.getPort());
-        BcryptService.AsyncClient client = new BcryptService.AsyncClient(protocolFactory, clientManager, transport);
-        sublist = password.subList(chunkStartIdx, chunkEndIdx);
-        System.out.println("                           size of work: " + sublist.size());
-        client.hashPasswordBE(sublist, logRounds, new HashPasswordBECallback(this, sublist, logRounds, socket, transport, hashPasswordLatch, hashedPasswords, chunkStartIdx));
-        chunkStartIdx = chunkEndIdx;
-        chunkEndIdx = remainder > 0 ? chunkStartIdx + numItemsInChunk + 1 : chunkStartIdx + numItemsInChunk;
-        remainder--;
+        for (int i = 0; i < NUM_CORES; ++i) {
+          System.out.println("[hashPassword] core "  + i + "     range: [" + chunkStartIdx + ", " + chunkEndIdx + ")");
+          TNonblockingTransport transport = new TNonblockingSocket(socket.getHostname(), socket.getPort());
+          BcryptService.AsyncClient client = new BcryptService.AsyncClient(protocolFactory, clientManager, transport);
+          sublist = password.subList(chunkStartIdx, chunkEndIdx);
+          System.out.println("                           size of work: " + sublist.size());
+          client.hashPasswordBE(sublist, logRounds, new HashPasswordBECallback(this, sublist, logRounds, socket, transport, hashPasswordLatch, hashedPasswords, chunkStartIdx));
+          chunkStartIdx = chunkEndIdx;
+          chunkEndIdx = remainder > 0 ? chunkStartIdx + numItemsInChunk + 1 : chunkStartIdx + numItemsInChunk;
+          remainder--;
+        }
       }
       sublist = password.subList(chunkStartIdx, password.size());
       System.out.println("[hashPassword] giving some work for FE size: " + sublist.size());
@@ -77,6 +82,7 @@ public class BcryptServiceHandler implements BcryptService.Iface {
   public List<Boolean> checkPassword(List<String> password, List<String> hash) throws IllegalArgument, org.apache.thrift.TException {
     try {
       System.out.println("[checkPassword] request received with size: " + password.size());
+      System.out.println("                         available BENodes: " + BEsockets.size());
       if (password == null) throw new Exception("list of password is null");
       if (hash == null) throw new Exception("list of hash is null");
       int pwdListSize = password.size();
@@ -87,7 +93,7 @@ public class BcryptServiceHandler implements BcryptService.Iface {
       TProtocolFactory protocolFactory = new TBinaryProtocol.Factory();
       TAsyncClientManager clientManager = new TAsyncClientManager();
       List<Boolean> checkedHashes = new ArrayList<>(Collections.nCopies(password.size(), Boolean.FALSE));
-      int numWorkers = BEsockets.size() + 1;
+      int numWorkers = (BEsockets.size() * NUM_CORES) + 1;
       int numItemsInChunk = password.size() / numWorkers;
       CountDownLatch checkPasswordLatch = new CountDownLatch(numWorkers);
       int remainder = password.size() % numWorkers;
@@ -98,15 +104,18 @@ public class BcryptServiceHandler implements BcryptService.Iface {
       remainder--;
       for (SocketInfo socket : BEsockets) {
         System.out.println("[checkPassword] trying to reach BENode at " + socket.toString());
-        TNonblockingTransport transport = new TNonblockingSocket(socket.getHostname(), socket.getPort());
-        BcryptService.AsyncClient client = new BcryptService.AsyncClient(protocolFactory, clientManager, transport);
-        pwdSublist = password.subList(chunkStartIdx, chunkEndIdx);
-        System.out.println("                            size of work: " + pwdSublist.size());
-        hashSublist = hash.subList(chunkStartIdx, chunkEndIdx);
-        client.checkPasswordBE(pwdSublist, hashSublist, new CheckPasswordBECallback(this, pwdSublist, hashSublist, socket, transport, checkPasswordLatch, checkedHashes, chunkStartIdx));
-        chunkStartIdx = chunkEndIdx;
-        chunkEndIdx = remainder > 0 ? chunkStartIdx + numItemsInChunk + 1 : chunkStartIdx + numItemsInChunk;
-        remainder--;
+        for (int i = 0; i < NUM_CORES; ++i) {
+          System.out.println("[checkPassword] core "  + i + "     range: [" + chunkStartIdx + ", " + chunkEndIdx + ")");
+          TNonblockingTransport transport = new TNonblockingSocket(socket.getHostname(), socket.getPort());
+          BcryptService.AsyncClient client = new BcryptService.AsyncClient(protocolFactory, clientManager, transport);
+          pwdSublist = password.subList(chunkStartIdx, chunkEndIdx);
+          System.out.println("                            size of work: " + pwdSublist.size());
+          hashSublist = hash.subList(chunkStartIdx, chunkEndIdx);
+          client.checkPasswordBE(pwdSublist, hashSublist, new CheckPasswordBECallback(this, pwdSublist, hashSublist, socket, transport, checkPasswordLatch, checkedHashes, chunkStartIdx));
+          chunkStartIdx = chunkEndIdx;
+          chunkEndIdx = remainder > 0 ? chunkStartIdx + numItemsInChunk + 1 : chunkStartIdx + numItemsInChunk;
+          remainder--;
+        }
       }
       pwdSublist = password.subList(chunkStartIdx, password.size());
       hashSublist = hash.subList(chunkStartIdx, hash.size());
@@ -151,12 +160,11 @@ public class BcryptServiceHandler implements BcryptService.Iface {
   }
 
 
-  public void heartbeatBE(String hostname, short port) throws IllegalArgument, org.apache.thrift.TException {
+  public void heartbeatBE(String hostname, short port) {
     try {
       BEsockets.add(new SocketInfo(hostname, port));
     } catch (Exception e) {
       System.out.println("[heartbeatBE] " + e.getMessage());
-      throw new IllegalArgument(e.getMessage());
     }
   }
 
