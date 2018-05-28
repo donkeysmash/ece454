@@ -1,4 +1,5 @@
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.*;
 import java.util.*;
 
 import org.apache.thrift.*;
@@ -27,7 +28,7 @@ public class BcryptServiceHandler implements BcryptService.Iface {
       TProtocolFactory protocolFactory = new TBinaryProtocol.Factory();
       TAsyncClientManager clientManager = new TAsyncClientManager();
       List<String> hashedPasswords = new ArrayList<>(Collections.nCopies(password.size(), ""));
-      int numWorkers = (BEsockets.size() * NUM_CORES) + 1;
+      int numWorkers = (BEsockets.size() + 1) * NUM_CORES;
       int numItemsInChunk = password.size() / numWorkers;
       CountDownLatch hashPasswordLatch = new CountDownLatch(numWorkers);
       int remainder = password.size() % numWorkers;
@@ -38,7 +39,7 @@ public class BcryptServiceHandler implements BcryptService.Iface {
       for (SocketInfo socket : BEsockets) {
         System.out.println("[hashPassword] trying to reach BENode at " + socket.toString());
         for (int i = 0; i < NUM_CORES; ++i) {
-          System.out.println("[hashPassword] core "  + i + "     range: [" + chunkStartIdx + ", " + chunkEndIdx + ")");
+          System.out.println("[hashPassword] thread# "  + i + "     range: [" + chunkStartIdx + ", " + chunkEndIdx + ")");
           TNonblockingTransport transport = new TNonblockingSocket(socket.getHostname(), socket.getPort());
           BcryptService.AsyncClient client = new BcryptService.AsyncClient(protocolFactory, clientManager, transport);
           sublist = password.subList(chunkStartIdx, chunkEndIdx);
@@ -49,13 +50,19 @@ public class BcryptServiceHandler implements BcryptService.Iface {
           remainder--;
         }
       }
-      sublist = password.subList(chunkStartIdx, password.size());
-      System.out.println("[hashPassword] giving some work for FE size: " + sublist.size());
-      List<String> FEResult = this.hashPasswordBE(sublist, logRounds);
-      for (int i = 0; i < FEResult.size(); ++i) {
-        hashedPasswords.set(chunkStartIdx + i, FEResult.get(i));
+      System.out.println("[hashPassword] giving some work to FE");
+      ExecutorService executor = Executors.newFixedThreadPool(NUM_CORES * 3);
+      for (int i = 0; i < NUM_CORES; ++i) {
+        System.out.println("[hashPassword] thread# "  + i + "     range: [" + chunkStartIdx + ", " + chunkEndIdx + ")");
+        sublist = password.subList(chunkStartIdx, chunkEndIdx);
+        System.out.println("                           size of work: " + sublist.size());
+        Runnable feThread = new HashPasswordFE(this, sublist, logRounds, hashPasswordLatch, hashedPasswords, chunkStartIdx);
+        executor.execute(feThread);
+        chunkStartIdx = chunkEndIdx;
+        chunkEndIdx = remainder > 0 ? chunkStartIdx + numItemsInChunk + 1 : chunkStartIdx + numItemsInChunk;
+        remainder--;
       }
-      hashPasswordLatch.countDown();
+      executor.shutdown();
       hashPasswordLatch.await();
       System.out.println("[hashPassword] successful with size " + hashedPasswords.size() + "\n");
       return hashedPasswords;
@@ -93,7 +100,7 @@ public class BcryptServiceHandler implements BcryptService.Iface {
       TProtocolFactory protocolFactory = new TBinaryProtocol.Factory();
       TAsyncClientManager clientManager = new TAsyncClientManager();
       List<Boolean> checkedHashes = new ArrayList<>(Collections.nCopies(password.size(), Boolean.FALSE));
-      int numWorkers = (BEsockets.size() * NUM_CORES) + 1;
+      int numWorkers = (BEsockets.size() + 1) * NUM_CORES;
       int numItemsInChunk = password.size() / numWorkers;
       CountDownLatch checkPasswordLatch = new CountDownLatch(numWorkers);
       int remainder = password.size() % numWorkers;
@@ -109,22 +116,28 @@ public class BcryptServiceHandler implements BcryptService.Iface {
           TNonblockingTransport transport = new TNonblockingSocket(socket.getHostname(), socket.getPort());
           BcryptService.AsyncClient client = new BcryptService.AsyncClient(protocolFactory, clientManager, transport);
           pwdSublist = password.subList(chunkStartIdx, chunkEndIdx);
-          System.out.println("                            size of work: " + pwdSublist.size());
           hashSublist = hash.subList(chunkStartIdx, chunkEndIdx);
+          System.out.println("                            size of work: " + pwdSublist.size());
           client.checkPasswordBE(pwdSublist, hashSublist, new CheckPasswordBECallback(this, pwdSublist, hashSublist, socket, transport, checkPasswordLatch, checkedHashes, chunkStartIdx));
           chunkStartIdx = chunkEndIdx;
           chunkEndIdx = remainder > 0 ? chunkStartIdx + numItemsInChunk + 1 : chunkStartIdx + numItemsInChunk;
           remainder--;
         }
       }
-      pwdSublist = password.subList(chunkStartIdx, password.size());
-      hashSublist = hash.subList(chunkStartIdx, hash.size());
-      System.out.println("[checkPassword] giving some work for FE size: " + pwdSublist.size());
-      List<Boolean> FEResult = this.checkPasswordBE(pwdSublist, hashSublist);
-      for (int i = 0; i < FEResult.size(); ++i) {
-        checkedHashes.set(i + chunkStartIdx, FEResult.get(i));
+      System.out.println("[checkPassword] giving some work to FE");
+      ExecutorService executor = Executors.newFixedThreadPool(NUM_CORES * 3);
+      for (int i = 0; i < NUM_CORES; ++i) {
+        System.out.println("[checkPassword] thread# " + i + "    range: [" + chunkStartIdx + ", " + chunkEndIdx + ")");
+        pwdSublist = password.subList(chunkStartIdx, chunkEndIdx);
+        hashSublist = hash.subList(chunkStartIdx, chunkEndIdx);
+        System.out.println("                           size of work: " + pwdSublist.size());
+        Runnable feThread = new CheckPasswordFE(this, pwdSublist, hashSublist, checkPasswordLatch, checkedHashes, chunkStartIdx);
+        executor.execute(feThread);
+        chunkStartIdx = chunkEndIdx;
+        chunkEndIdx = remainder > 0 ? chunkStartIdx + numItemsInChunk + 1 : chunkStartIdx + numItemsInChunk;
+        remainder--;
       }
-      checkPasswordLatch.countDown();
+      executor.shutdown();
       checkPasswordLatch.await();
       System.out.println("[checkPassword] successful with size " + checkedHashes.size() + "\n");
       return checkedHashes;
@@ -159,6 +172,70 @@ public class BcryptServiceHandler implements BcryptService.Iface {
     }
   }
 
+  class CheckPasswordFE implements Runnable {
+    private BcryptServiceHandler handler;
+    private List<String> pwdList;
+    private List<String> hashList;
+    private CountDownLatch checkPasswordLatch;
+    private List<Boolean> checkedHashes;
+    private int startIndex;
+
+    public CheckPasswordFE(BcryptServiceHandler handler, List<String> pwdList, List<String> hashList, CountDownLatch checkPasswordLatch, List<Boolean> checkedHashes, int startIndex) {
+      this.handler = handler;
+      this.pwdList = pwdList;
+      this.hashList = hashList;
+      this.checkPasswordLatch = checkPasswordLatch;
+      this.checkedHashes = checkedHashes;
+      this.startIndex = startIndex;
+    }
+
+    @Override
+    public void run() {
+      try {
+        List<Boolean> response = this.handler.checkPasswordBE(this.pwdList, this.hashList);
+        for (int i = 0; i < response.size(); ++i) {
+          this.checkedHashes.set(this.startIndex + i, response.get(i));
+        }
+      } catch (Exception e) {
+        System.out.println("[checkPassword, FE Threading-exception] " + e.getMessage());
+      } finally {
+        this.checkPasswordLatch.countDown();
+      }
+    }
+
+  }
+
+  class HashPasswordFE implements Runnable {
+    private BcryptServiceHandler handler;
+    private List<String> sublist;
+    private short logRounds;
+    private CountDownLatch hashPasswordLatch;
+    private List<String> hashedPasswords;
+    private int startIndex;
+
+    public HashPasswordFE(BcryptServiceHandler handler, List<String> sublist, short logRounds, CountDownLatch hashPasswordLatch, List<String> hashedPasswords, int startIndex) {
+       this.handler = handler;
+       this.sublist = sublist;
+       this.logRounds = logRounds;
+       this.hashPasswordLatch = hashPasswordLatch;
+       this.hashedPasswords = hashedPasswords;
+       this.startIndex = startIndex;
+    }
+
+    @Override
+    public void run() {
+      try {
+        List<String> response = this.handler.hashPasswordBE(this.sublist, this.logRounds);
+        for (int i = 0; i < response.size(); ++i) {
+          this.hashedPasswords.set(this.startIndex + i, response.get(i));
+        }
+      } catch (Exception e) {
+        System.out.println("[hashPassword, FE Threading-exception] " + e.getMessage());
+      } finally {
+        this.hashPasswordLatch.countDown();
+      }
+    }
+  }
 
   public void heartbeatBE(String hostname, short port) {
     try {
