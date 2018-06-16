@@ -1,3 +1,4 @@
 *.class
 *.jar
 output_hadoop/
+output_hadoop_task1/
