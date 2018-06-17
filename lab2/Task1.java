@@ -15,7 +15,7 @@ import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 import org.apache.hadoop.util.GenericOptionsParser;
 
 public class Task1 {
-  public static class TokenizerMapper extends Mapper<Object, Text, Text, Text> {
+  public static class Task1Mapper extends Mapper<Object, Text, Text, Text> {
     private Text title = new Text();
     private Text ratings = new Text();
 
@@ -54,7 +54,7 @@ public class Task1 {
     }
     Job job = new Job(conf, "task 1");
     job.setJar("Task1.jar");
-    job.setMapperClass(TokenizerMapper.class);
+    job.setMapperClass(Task1Mapper.class);
     job.setOutputKeyClass(Text.class);
     job.setOutputValueClass(Text.class);
     job.setNumReduceTasks(0);
