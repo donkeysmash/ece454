@@ -1,4 +1,6 @@
 *.class
 *.jar
+.*.swp
 output_hadoop/
-output_hadoop_task1/
+output_hadoop_task*
+output_spark_task*
