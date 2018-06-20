@@ -20,7 +20,7 @@ echo --- Jarring
 $JAVA_HOME/bin/jar -cf Task$1.jar Task$1*.class
 
 echo --- Running
-INPUT=sample_input/smalldata.txt
+INPUT=sample_input/myinput.txt
 OUTPUT=output_spark_task$1
 
 rm -fr $OUTPUT

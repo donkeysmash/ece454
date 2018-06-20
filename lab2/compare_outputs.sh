@@ -1,7 +1,7 @@
 #!/bin/bash
 
-OUTPUT_SPARK=output_spark
-OUTPUT_HADOOP=output_hadoop
+OUTPUT_SPARK=output_spark_task$1
+OUTPUT_HADOOP=output_hadoop_task$1
 
 cat $OUTPUT_SPARK/* | sort > normalized_spark.txt
 cat $OUTPUT_HADOOP/* | sort > normalized_hadoop.txt
