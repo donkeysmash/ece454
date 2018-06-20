@@ -1,16 +1,17 @@
-#!/bin/sh
+#!/bin/bash
 
 unset JAVA_TOOL_OPTIONS
 export JAVA_HOME=/usr/lib/jvm/java-1.8.0
-export HADOOP_HOME=/opt/hadoop-2.7.2
-export CLASSPATH=`$HADOOP_HOME/bin/hadoop classpath`
+export SCALA_HOME=/opt/scala-2.11.6
+export SPARK_HOME=/opt/spark-2.1.0-bin-hadoop2.7
+export CLASSPATH=.:"$SPARK_HOME/jars/*"
 
 echo --- Deleting
 rm Task$1.jar
 rm Task$1*.class
 
 echo --- Compiling
-$JAVA_HOME/bin/javac Task$1.java
+$SCALA_HOME/bin/scalac Task$1.scala
 if [ $? -ne 0 ]; then
     exit
 fi
@@ -20,9 +21,9 @@ $JAVA_HOME/bin/jar -cf Task$1.jar Task$1*.class
 
 echo --- Running
 INPUT=sample_input/myinput.txt
-OUTPUT=output_hadoop_task$1
+OUTPUT=output_spark_task$1
 
 rm -fr $OUTPUT
-$HADOOP_HOME/bin/hadoop jar Task$1.jar Task$1 $INPUT $OUTPUT
+$SPARK_HOME/bin/spark-submit --master "local[*]" --class Task$1 Task$1.jar $INPUT $OUTPUT
 
 cat $OUTPUT/*
