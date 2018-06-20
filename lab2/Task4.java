@@ -20,7 +20,7 @@ import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 import org.apache.hadoop.util.GenericOptionsParser;
 
 public class Task4 {
-	private static final String OUTPUT_PATH = "intermediate_output";
+	private static final String OUTPUT_PATH = "intermediate_output_test";
   	public static class Task4Mapper extends Mapper<Object,Text,Text,MapWritable> {
    		private Text userId = new Text();
    		public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
@@ -144,7 +144,7 @@ public class Task4 {
 	      System.exit(2);
 	    }
 	    Job job = new Job(conf, "word count");
-		job.setJarByClass(Task4.class);
+	    job.setJar("Task4.jar");
 
 	    job.setMapperClass(Task4Mapper.class);
 	    job.setCombinerClass(Task4Combiner.class);
@@ -162,7 +162,7 @@ public class Task4 {
 	    job.waitForCompletion(true);
 
 	    Job job2 = new Job(conf, "Job 2");
-		job2.setJarByClass(Task4.class);
+	    job2.setJar("Task4.jar");
 
 		job2.setMapperClass(Task4Mapper2.class);
 		job2.setReducerClass(Task4Reducer2.class);
