@@ -2,6 +2,7 @@
 *.jar
 .*.swp
 output_hadoop/
+output_spark/
 output_hadoop_task*
 output_spark_task*
 sample_input/mydata.txt
