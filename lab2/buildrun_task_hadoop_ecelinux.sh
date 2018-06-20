@@ -20,9 +20,11 @@ $JAVA_HOME/bin/jar -cf Task$1.jar Task$1*.class
 
 echo --- Running
 INPUT=sample_input/myinput.txt
+#INPUT=sample_input/smalldata.txt
 OUTPUT=output_hadoop_task$1
+INTERMEDIATE=intermediate_output
 
-rm -fr $OUTPUT
+rm -fr $OUTPUT $INTERMEDIATE
 $HADOOP_HOME/bin/hadoop jar Task$1.jar Task$1 $INPUT $OUTPUT
 
 cat $OUTPUT/*
