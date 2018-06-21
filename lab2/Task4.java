@@ -233,7 +233,7 @@ public class Task4 {
 	    Job job = new Job(conf, "Task 4");
 		job.setJar("Task4.jar");
 
-		MultipleOutputs.addNamedOutput(job, CACHE_PATH, TextOutputFormat.class, Text.class, Text.class);
+		MultipleOutputs.addNamedOutput(job, new Path(CACHE_PATH).toString(), TextOutputFormat.class, Text.class, Text.class);
 
 	    job.setMapperClass(Task4Mapper1.class);
 	    job.setReducerClass(Task4Reducer1.class);
@@ -251,7 +251,7 @@ public class Task4 {
 
 	    Job job2 = new Job(conf, "Job 2");
 
-	    job2.addCacheFile(new Path("/home/sh33kim/ece454/lab2/intermediate_output/cache-m-00000").toUri());
+	    job2.addCacheFile(new Path(OUTPUT_PATH+"/cache-m-00000").toUri());
 
 
 //	    DistributedCache.addCacheFile(new URI("/home/sh33kim/ece454/lab2/intermediate_output/cache-m-00000"), job2.getConfiguration());
@@ -260,7 +260,7 @@ public class Task4 {
 
 		job2.setMapperClass(Task4Mapper2.class);
 		job2.setReducerClass(Task4Reducer2.class);
-		job2.setCombinerClass(Task4Combiner2.class);
+//		job2.setCombinerClass(Task4Combiner2.class);
 
 
 		job2.setMapOutputKeyClass(Text.class);
