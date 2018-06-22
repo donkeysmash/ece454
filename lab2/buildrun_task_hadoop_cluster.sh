@@ -22,6 +22,6 @@ OUTPUT=/user/${USER}/a2_hadoop_task$1/
 
 hdfs dfs -rm -R $OUTPUT
 #hdfs dfs -copyFromLocal sample_input/smalldata.txt /tmp
-time hadoop jar Task$1.jar Task$1 $INPUT $OUTPUT
+time hadoop jar Task$1.jar Task$1 -D mapred.max.split.size=16777216 $INPUT $OUTPUT
 
 hdfs dfs -ls $OUTPUT
