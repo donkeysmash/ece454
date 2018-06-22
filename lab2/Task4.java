@@ -150,10 +150,10 @@ public class Task4 {
     protected void setup(Context context) throws IOException, InterruptedException {
       Path[] cacheFilesLocal = context.getLocalCacheFiles();
       for (Path eachPath : cacheFilesLocal) {
-      	if (eachPath.getName().toString().trim().contains("cache-m-")) {
-      			context.getCounter(MYCOUNTER.FILE_EXISTS).increment(1);
-      		loadDepartmentsHashMap(eachPath, context);
-      	}
+        if (eachPath.getName().toString().trim().contains("cache-m-")) {
+          context.getCounter(MYCOUNTER.FILE_EXISTS).increment(1);
+          loadDepartmentsHashMap(eachPath, context);
+        }
       }
 
     }
@@ -223,7 +223,7 @@ public class Task4 {
 
     String[] otherArgs = new GenericOptionsParser(conf, args).getRemainingArgs();
     if (otherArgs.length != 2) {
-      System.err.println("Usage: wordcount <in> <out>");
+      System.err.println("Usage: task4 <in> <out>");
       System.exit(2);
     }
     Job job = new Job(conf, "Task 4");
@@ -247,15 +247,14 @@ public class Task4 {
 
     Job job2 = new Job(conf, "Job 2");
 
-    Path path = new Path(OUTPUT_PATH); 
+    Path path = new Path(OUTPUT_PATH);
     FileSystem fs = path.getFileSystem(conf);
     FileStatus[] fileStatuses = fs.listStatus(path);
-    for(FileStatus fileStatus : fileStatuses)
-    {
-        if(fileStatus.isFile()) {
-        	job2.addCacheFile(fileStatus.getPath().toUri());
-        }
-    } 
+    for(FileStatus fileStatus : fileStatuses) {
+      if(fileStatus.isFile()) {
+        job2.addCacheFile(fileStatus.getPath().toUri());
+      }
+    }
 
     job2.setJar("Task4.jar");
 
