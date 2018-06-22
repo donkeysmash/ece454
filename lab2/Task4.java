@@ -247,12 +247,8 @@ public class Task4 {
 
     Job job2 = new Job(conf, "Job 2");
 
-    for (Path dependency : dependencies) {
-	   DistributedCache.addFileToClassPath(dependency, job.getConfiguration());
-	}
-
-	Path path = new Path(OUTPUT_PATH); 
-    FileSystem fs = path.getFileSystem(hadoopConfiguration);
+    Path path = new Path(OUTPUT_PATH); 
+    FileSystem fs = path.getFileSystem(conf);
     FileStatus[] fileStatuses = fs.listStatus(path);
     for(FileStatus fileStatus : fileStatuses)
     {
