@@ -48,6 +48,7 @@ public class Task3 {
     Job job = new Job(conf, "task 3");
     job.setJar("Task3.jar");
     job.setMapperClass(Task3Mapper.class);
+    job.setCombinerClass(IntSumReducer.class);
     job.setReducerClass(IntSumReducer.class);
     job.setOutputKeyClass(IntWritable.class);
     job.setOutputValueClass(IntWritable.class);
