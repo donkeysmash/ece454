@@ -147,14 +147,14 @@ public class Task4 {
 
     protected void setup(Context context) throws IOException, InterruptedException {
       Path[] cacheFilesLocal = context.getLocalCacheFiles();
-      loadDepartmentsHashMap(new Path(context.getConfiguration().get("mapreduce.job.cache.files")), context);
-      //for (Path eachPath : cacheFilesLocal) {
-      //	System.out.println("got path !!");
-      //	if (eachPath.getName().toString().trim().equals("cache-m-00000")) {
-      //			context.getCounter(MYCOUNTER.FILE_EXISTS).increment(1);
-      //		loadDepartmentsHashMap(eachPath, context);
-      //	}
-      //}
+      //loadDepartmentsHashMap(new Path(context.getConfiguration().get("mapreduce.job.cache.files")), context);
+      for (Path eachPath : cacheFilesLocal) {
+      	System.out.println("got path !!");
+      	if (eachPath.getName().toString().trim().equals("cache-m-00000")) {
+      			context.getCounter(MYCOUNTER.FILE_EXISTS).increment(1);
+      		loadDepartmentsHashMap(eachPath, context);
+      	}
+      }
 
     }
 
