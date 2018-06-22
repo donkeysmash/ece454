@@ -7,7 +7,7 @@ object Task4 {
     val idToTitle = collection.mutable.Map[Long, String]()
     val titleToId = collection.mutable.Map[String, Long]()
     val textFile = sc.textFile(args(0)).map(line => line.split(",")).persist()
-    val titles = textFile.map(x => x(0)).sortBy(_(0)).zipWithIndex.collect()
+    val titles = textFile.map(x => x(0)).sortBy(x => x).zipWithIndex.collect()
     for (title <- titles) {
       idToTitle(title._2) = title._1
       titleToId(title._1) = title._2
