@@ -207,7 +207,11 @@ public class Task4 {
         String wordFirst = DepartmentMap.get(word1.toString());
         String wordSecond = DepartmentMap.get(word2.toString());
 
-        pair.set(wordFirst + "," + wordSecond);
+        if (wordFirst.compareTo(wordSecond) < 0) {
+          pair.set(wordFirst + "," + wordSecond);
+        } else {
+          pair.set(wordSecond + "," + wordFirst);
+        }
         context.write(pair, (IntWritable)entry.getValue());
       }
     }
