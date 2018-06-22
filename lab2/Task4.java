@@ -29,6 +29,8 @@ import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 import org.apache.hadoop.util.GenericOptionsParser;
 import org.apache.hadoop.filecache.DistributedCache;
 import org.apache.hadoop.mapreduce.lib.output.MultipleOutputs;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.FileStatus;
 
 public class Task4 {
   private static final String OUTPUT_PATH = "intermediate_output";
@@ -147,10 +149,8 @@ public class Task4 {
 
     protected void setup(Context context) throws IOException, InterruptedException {
       Path[] cacheFilesLocal = context.getLocalCacheFiles();
-      //loadDepartmentsHashMap(new Path(context.getConfiguration().get("mapreduce.job.cache.files")), context);
       for (Path eachPath : cacheFilesLocal) {
-      	System.out.println("got path !!");
-      	if (eachPath.getName().toString().trim().equals("cache-m-00000")) {
+      	if (eachPath.getName().toString().trim().contains("cache-m-")) {
       			context.getCounter(MYCOUNTER.FILE_EXISTS).increment(1);
       		loadDepartmentsHashMap(eachPath, context);
       	}
@@ -247,9 +247,15 @@ public class Task4 {
 
     Job job2 = new Job(conf, "Job 2");
 
-    job2.addCacheFile(new Path(OUTPUT_PATH+"/cache-m-00000").toUri());
-
-
+    Path path = new Path(OUTPUT_PATH); 
+    FileSystem fs = path.getFileSystem(conf);
+    FileStatus[] fileStatuses = fs.listStatus(path);
+    for(FileStatus fileStatus : fileStatuses)
+    {
+        if(fileStatus.isFile()) {
+        	job2.addCacheFile(fileStatus.getPath().toUri());
+        }
+    } 
 
     job2.setJar("Task4.jar");
 
