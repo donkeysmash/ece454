@@ -20,7 +20,7 @@ object Task1 {
         }
       }).foldLeft(title)((acc, rating) => acc + "," + (rating._2 + 1))
     })
-       
+
     output.saveAsTextFile(args(1))
   }
 }

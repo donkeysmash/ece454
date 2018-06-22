@@ -20,7 +20,7 @@ echo --- Running
 INPUT=/tmp/a2_inputs/in3.txt
 #INPUT=/tmp/smalldata.txt
 OUTPUT=/user/${USER}/a2_hadoop_task4/
-INTERMEDIATE=/user/${USER}/intermediate_output
+INTERMEDIATE=${OUTPUT}_tmp
 
 hdfs dfs -rm -R $OUTPUT $INTERMEDIATE
 #hdfs dfs -copyFromLocal sample_input/smalldata.txt /tmp

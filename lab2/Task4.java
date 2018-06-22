@@ -33,7 +33,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FileStatus;
 
 public class Task4 {
-  private static final String OUTPUT_PATH = "intermediate_output";
+  private static String OUTPUT_PATH="";
   private static final String CACHE_PATH = "cache";
 
   public static class Task4Mapper1 extends Mapper<LongWritable,Text,Text,MapWritable> {
@@ -220,7 +220,7 @@ public class Task4 {
   public static void main(String[] args) throws Exception {
     Configuration conf = new Configuration();
     conf.set("mapred.textoutputformat.separator", ",");
-
+    OUTPUT_PATH = otherArgs[1] + "_tmp";
     String[] otherArgs = new GenericOptionsParser(conf, args).getRemainingArgs();
     if (otherArgs.length != 2) {
       System.err.println("Usage: task4 <in> <out>");
