@@ -5,15 +5,20 @@ object Task4 {
     val conf = new SparkConf().setAppName("Task 4")
     val sc = new SparkContext(conf)
     val idToTitle = collection.mutable.Map[Long, String]()
+    val titleToId = collection.mutable.Map[String, Long]()
+    val textFile = sc.textFile(args(0)).map(line => line.split(",")).persist()
+    val titles = textFile.map(x => x(0)).zipWithIndex.collect()
+    for (title <- titles) {
+      idToTitle(title._2) = title._1
+      titleToId(title._1) = title._2
+    }
     val idToTitleBC = sc.broadcast(idToTitle)
+    val titleToIdBC = sc.broadcast(titleToId)
 
-    val output = sc.textFile(args(0)).zipWithUniqueId
-      .map(line => {
-        val splited = line._1.split(",")
-        val titleString = splited(0)
-        val uid = line._2
-        idToTitleBC.value(uid) = titleString
-        (uid, splited.tail)
+
+    val output = textFile.map(splited => {
+        val titleId = titleToIdBC.value(splited(0))
+        (titleId, splited.tail)
       })
       .flatMap(x => {
         val title = x._1
