@@ -68,27 +68,28 @@ public class KeyValueHandler implements KeyValueService.Iface {
     }
 
     public void initBackUpClient() {
-      
+        lock.writeLock().lock();
         List<String> children = curClient.getChildren().usingWatcher(this).forPath(zkNode);
         if (children.size() > 1) {
             Collections.sort(children);
-            byte[] payloadPrimary = curClient.getData().forPath(zkNode + "/" + children.get(0));    
-            String ipAddressPrimary = new String(payloadPrimary);
-            String[] ipAddressPrimaryArray = ipAddressPrimary.split(":");
-            TSocket sock = new TSocket(ipAddressPrimaryArray[0], Integer.parseInt(ipAddressPrimaryArray[1]));
+            byte[] payloadBackup = curClient.getData().forPath(zkNode + "/" + children.get(1));    
+            String ipAddressBackup = new String(payloadBackup);
+            String[] ipAddressBackupArray = ipAddressBackup.split(":");
+            TSocket sock = new TSocket(ipAddressBackupArray[0], Integer.parseInt(ipAddressBackupArray[1]));
             TTransport transport = new TFramedTransport(sock);
             transport.open();
             TProtocol protocol = new TBinaryProtocol(transport);
             clientBackup = KeyValueService.Client(protocol);
         } 
+        lock.writeLock().unlock();
     }
 
-    public void copyData(data) throws org.apache.thrift.TException{
-        myMap = data;
+    public void copyData(Map<String, String> data) throws org.apache.thrift.TException{
+        this.myMap = data;
     }
 
     public Map<String, String> getData() throws org.apache.thrift.TException{
-        return myMap;
+        return this.myMap;
     }
 
 }
