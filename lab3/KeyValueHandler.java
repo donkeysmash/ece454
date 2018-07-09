@@ -13,6 +13,7 @@ import org.apache.curator.*;
 import org.apache.curator.retry.*;
 import org.apache.curator.framework.*;
 
+import org.apache.log4j.*;
 
 public class KeyValueHandler implements KeyValueService.Iface {
     private Map<String, String> myMap;
@@ -44,21 +45,24 @@ public class KeyValueHandler implements KeyValueService.Iface {
 
     public void put(String key, String value) throws org.apache.thrift.TException
     {
+        lock.writeLock().lock();
 	    myMap.put(key, value);
       
-      try {  
-        List<String> children = curClient.getChildren().forPath(zkNode);
-        if (children.size() == 1) {
-            clientBackup = null;
-        } else if (children.size() > 1 && clientBackup != null) {
-            clientBackup.putBackup(key, value);
-        } else {
-            initBackUpClient();
-            clientBackup.putBackup(key, value);
+        try {  
+            List<String> children = curClient.getChildren().forPath(zkNode);
+            if (children.size() == 1) {
+                clientBackup = null;
+            } else if (children.size() > 1 && clientBackup != null) {
+                clientBackup.putBackup(key, value);
+            } else {
+                initBackUpClient();
+                clientBackup.putBackup(key, value);
+            }
+        } catch(Exception e) {
+            log.info("Put Exception");
+        } finally {
+            lock.writeLock().unlock();
         }
-       } catch(Exception e) {
-
-       }
     }
 
     public void putBackup(String key, String value) throws org.apache.thrift.TException
@@ -67,7 +71,7 @@ public class KeyValueHandler implements KeyValueService.Iface {
         try{
             myMap.put(key, value);
         } catch (Exception e) {
-            lock.writeLock().unlock();
+            log.info("PutBackup Exception");
         } finally{
             lock.writeLock().unlock();
         }
@@ -77,30 +81,33 @@ public class KeyValueHandler implements KeyValueService.Iface {
         lock.writeLock().lock();
         
         try {
-        List<String> currChildren = curClient.getChildren().forPath(zkNode);
-        if (currChildren.size() > 1) {
-            Collections.sort(currChildren);
+            List<String> currChildren = curClient.getChildren().forPath(zkNode);
+            if (currChildren.size() > 1) {
+                Collections.sort(currChildren);
+               
+                byte[] payloadBackup = curClient.getData().forPath(zkNode + "/" + currChildren.get(1));    
+                String ipAddressBackup = new String(payloadBackup);
+                String[] ipAddressBackupArray = ipAddressBackup.split(":");
+                TSocket sock = new TSocket(ipAddressBackupArray[0], Integer.parseInt(ipAddressBackupArray[1]));
+                TTransport transport = new TFramedTransport(sock);
+                transport.open();
+                TProtocol protocol = new TBinaryProtocol(transport);
+                clientBackup = new KeyValueService.Client(protocol);
            
-            byte[] payloadBackup = curClient.getData().forPath(zkNode + "/" + currChildren.get(1));    
-            String ipAddressBackup = new String(payloadBackup);
-            String[] ipAddressBackupArray = ipAddressBackup.split(":");
-            TSocket sock = new TSocket(ipAddressBackupArray[0], Integer.parseInt(ipAddressBackupArray[1]));
-            TTransport transport = new TFramedTransport(sock);
-            transport.open();
-            TProtocol protocol = new TBinaryProtocol(transport);
-            clientBackup = new KeyValueService.Client(protocol);
-       
 
-        } 
+            } 
 
         } catch(Exception e) {
-
+            log.info("initBackUpClient Exception");
+        } finally {
+            lock.writeLock().unlock();
         }
-        lock.writeLock().unlock();
     }
 
     public void copyData(Map<String, String> data) throws org.apache.thrift.TException{
+        lock.writeLock().lock();
         this.myMap = data;
+        lock.writeLock().unlock();
     }
 
     public Map<String, String> getData() throws org.apache.thrift.TException{
