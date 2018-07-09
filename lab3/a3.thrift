@@ -3,6 +3,6 @@ service KeyValueService {
   void put(1: string key, 2: string value);
   void putBackup(1: string key, 2: string value);
   void initBackUpClient(); 
-  void copyData(1: Map<String, String> data);
-  Map<String, String> getData();  
+  void copyData(1: map<string, string> data);
+  map<string, string> getData();  
 }

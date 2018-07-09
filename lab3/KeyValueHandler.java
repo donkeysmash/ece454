@@ -1,5 +1,6 @@
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.locks.*;
 
 import org.apache.thrift.*;
 import org.apache.thrift.server.*;
@@ -44,15 +45,20 @@ public class KeyValueHandler implements KeyValueService.Iface {
     public void put(String key, String value) throws org.apache.thrift.TException
     {
 	    myMap.put(key, value);
+      
+      try {  
         List<String> children = curClient.getChildren().forPath(zkNode);
-        if (children.size == 1) {
-            clientBackup = null
+        if (children.size() == 1) {
+            clientBackup = null;
         } else if (children.size() > 1 && clientBackup != null) {
             clientBackup.putBackup(key, value);
         } else {
             initBackUpClient();
             clientBackup.putBackup(key, value);
         }
+       } catch(Exception e) {
+
+       }
     }
 
     public void putBackup(String key, String value) throws org.apache.thrift.TException
@@ -69,18 +75,27 @@ public class KeyValueHandler implements KeyValueService.Iface {
 
     public void initBackUpClient() {
         lock.writeLock().lock();
-        List<String> children = curClient.getChildren().usingWatcher(this).forPath(zkNode);
-        if (children.size() > 1) {
-            Collections.sort(children);
-            byte[] payloadBackup = curClient.getData().forPath(zkNode + "/" + children.get(1));    
+        
+        try {
+        List<String> currChildren = curClient.getChildren().forPath(zkNode);
+        if (currChildren.size() > 1) {
+            Collections.sort(currChildren);
+           
+            byte[] payloadBackup = curClient.getData().forPath(zkNode + "/" + currChildren.get(1));    
             String ipAddressBackup = new String(payloadBackup);
             String[] ipAddressBackupArray = ipAddressBackup.split(":");
             TSocket sock = new TSocket(ipAddressBackupArray[0], Integer.parseInt(ipAddressBackupArray[1]));
             TTransport transport = new TFramedTransport(sock);
             transport.open();
             TProtocol protocol = new TBinaryProtocol(transport);
-            clientBackup = KeyValueService.Client(protocol);
+            clientBackup = new KeyValueService.Client(protocol);
+       
+
         } 
+
+        } catch(Exception e) {
+
+        }
         lock.writeLock().unlock();
     }
 

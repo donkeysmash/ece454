@@ -61,10 +61,12 @@ public class StorageNode {
 		String ipAddress = args[0] + ":" + args[1];
 		byte[] payload = ipAddress.getBytes();
 		String zkNode = args[3];
-		curClient.create().withMode(CreateMode.EPHEMERAL).forPath(zkNode, payload);
+    log.info("cur zkNode ::******************************************** " + zkNode);
+		curClient.create().withMode(CreateMode.EPHEMERAL_SEQUENTIAL).forPath(zkNode + "/child", payload);
 
 		List<String> children = curClient.getChildren().forPath(zkNode);
 		Collections.sort(children);
+    log.info("Child name :&&&&&&&&&&&&&&&&&&&&  " + children.get(0));
 		byte[] payloadPrimary = curClient.getData().forPath(zkNode + "/" + children.get(0));	
 		String ipAddressPrimary = new String(payloadPrimary);
 
@@ -76,29 +78,31 @@ public class StorageNode {
 		}
 
 		if (children.size() > 1) {
-			List<String> children = curClient.getChildren().forPath(args[3]);
-			Collections.sort(children);
+		//	List<String> children = curClient.getChildren().forPath(args[3]);
+			log.info("more than one srver");
+      Collections.sort(children);
 			for (String child : children) {
+        log.info("Child name : " + child);
 				String ipAddressChild = new String(curClient.getData().forPath(zkNode + "/" + child));
 				if (!ipAddressChild.equals(ipAddress)) {
 			    	
 
-			    	String[] ipAddressFromArr = ipAddressChild.split(":");
+			    String[] ipAddressFromArr = ipAddressChild.split(":");
 					TSocket sockFrom = new TSocket(ipAddressFromArr[0], Integer.parseInt(ipAddressFromArr[1]));
 			        TTransport transport = new TFramedTransport(sockFrom);
 			        transport.open();
 			        TProtocol protocol = new TBinaryProtocol(transport);
 					KeyValueService.Client clientBackup = new KeyValueService.Client(protocol);
-					Map<String, String> data = clientBackup.copyData();
+					Map<String, String> data = clientBackup.getData();
 					transport.close();
 
 					String[] ipAddressToArr = ipAddress.split(":");
 					TSocket sockTo = new TSocket(ipAddressToArr[0], Integer.parseInt(ipAddressToArr[1]));
-			        TTransport transport = new TFramedTransport(sockTo);
-			        transport.open();
-			        TProtocol protocol = new TBinaryProtocol(transport);
-					KeyValueService.Client clientBackup = new KeyValueService.Client(protocol);
-					clientBackup.copyData(data);
+			        TTransport transport2 = new TFramedTransport(sockTo);
+			        transport2.open();
+			        TProtocol protocol2 = new TBinaryProtocol(transport2);
+					KeyValueService.Client clientPrimary = new KeyValueService.Client(protocol2);
+					clientPrimary.copyData(data);
 
 					break;
 				}
