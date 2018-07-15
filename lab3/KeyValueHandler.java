@@ -91,8 +91,6 @@ public class KeyValueHandler implements KeyValueService.Iface {
         transport.open();
         TProtocol protocol = new TBinaryProtocol(transport);
         clientBackup = new KeyValueService.Client(protocol);
-
-
       }
 
     } catch(Exception e) {

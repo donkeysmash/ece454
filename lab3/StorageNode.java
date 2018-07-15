@@ -67,30 +67,23 @@ public class StorageNode {
     byte[] payloadPrimary = curClient.getData().forPath(zkNode + "/" + children.get(0));
     String ipAddressPrimary = new String(payloadPrimary);
 
-    if (ipAddressPrimary.equals(ipAddress)) {
-      //this is primary
-      //implement concurrency control
-    } else {
-      //this is back up
-    }
-
     log.info("numServers: " + children.size());
-    if (children.size() > 1) {
-      //	List<String> children = curClient.getChildren().forPath(args[3]);
-      Collections.sort(children);
+    log.info("children: " + String.join(", ",  children));
+    if (children.size() > 1) { // must create replicate
+      log.info("more than 1 node so let's replicate");
       for (String child : children) {
-        log.info("Child name : " + child);
         String ipAddressChild = new String(curClient.getData().forPath(zkNode + "/" + child));
-        if (!ipAddressChild.equals(ipAddress)) {
-
-
-          String[] ipAddressFromArr = ipAddressChild.split(":");
+        log.info("Child name : " + child + "@" + ipAddressChild);
+        if (!ipAddressChild.equals(ipAddressPrimary)) {
+          log.info("new backup - start replicate");
+          String[] ipAddressFromArr = ipAddressPrimary.split(":");
           TSocket sockFrom = new TSocket(ipAddressFromArr[0], Integer.parseInt(ipAddressFromArr[1]));
           TTransport transport = new TFramedTransport(sockFrom);
           transport.open();
           TProtocol protocol = new TBinaryProtocol(transport);
           KeyValueService.Client clientBackup = new KeyValueService.Client(protocol);
           Map<String, String> data = clientBackup.getData();
+          log.info("retrieved " + data.size() + " records");
           transport.close();
 
           String[] ipAddressToArr = ipAddress.split(":");
@@ -99,12 +92,14 @@ public class StorageNode {
           transport2.open();
           TProtocol protocol2 = new TBinaryProtocol(transport2);
           KeyValueService.Client clientPrimary = new KeyValueService.Client(protocol2);
+          log.info("copying data");
           clientPrimary.copyData(data);
-
-          break;
+        } else {
+          log.info("this is primary so skip");
         }
       }
 
     } //needs replication
+    log.info("init completed");
   }
 }
