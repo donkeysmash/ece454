@@ -61,12 +61,9 @@ public class StorageNode {
     String ipAddress = args[0] + ":" + args[1];
     byte[] payload = ipAddress.getBytes();
     String zkNode = args[3];
-    log.info("cur zkNode ::******************************************** " + zkNode);
     curClient.create().withMode(CreateMode.EPHEMERAL_SEQUENTIAL).forPath(zkNode + "/child", payload);
-
     List<String> children = curClient.getChildren().forPath(zkNode);
     Collections.sort(children);
-    log.info("Child name :&&&&&&&&&&&&&&&&&&&&  " + children.get(0));
     byte[] payloadPrimary = curClient.getData().forPath(zkNode + "/" + children.get(0));
     String ipAddressPrimary = new String(payloadPrimary);
 
@@ -77,9 +74,9 @@ public class StorageNode {
       //this is back up
     }
 
+    log.info("numServers: " + children.size());
     if (children.size() > 1) {
       //	List<String> children = curClient.getChildren().forPath(args[3]);
-      log.info("more than one srver");
       Collections.sort(children);
       for (String child : children) {
         log.info("Child name : " + child);

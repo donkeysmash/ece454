@@ -1,2 +1,4 @@
 .*.swp
 gen-java/
+scores.txt
+execution.log
