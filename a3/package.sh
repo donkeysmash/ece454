@@ -1,6 +1,6 @@
 #!/bin/sh
 
-FNAME=ece454a3.tar.gz
+FNAME=a3.tar.gz
 
 tar -czf $FNAME *.java a3.thrift group.txt
 

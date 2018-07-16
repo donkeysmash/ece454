@@ -8,9 +8,9 @@ JAVA_CC=$JAVA_HOME/bin/javac
 export CLASSPATH=".:gen-java:lib/*"
 
 
-echo --- Runing client
-# args: 4 threads, 5 seconds, keys drawn from a set of 1000
-$JAVA_HOME/bin/java A3Client $ZKSTRING /$USER 16 30 20000
+echo --- Running client
+# args: 4 threas, 5 seconds, keys drawn from a set of 1000
+$JAVA_HOME/bin/java A3Client $ZKSTRING /$USER 20 20 100
 
 echo --- Analyzing linearizability
 $JAVA_HOME/bin/java ca.uwaterloo.watca.LinearizabilityTest execution.log scores.txt > /dev/null
@@ -20,3 +20,4 @@ echo Number of other linearizability violations: `cat scores.txt | grep 'Score =
 echo
 echo NOTE: Shut down both the primary and the secondary storage nodes after running this script, and then restart them.  Failure to do so will result in false linearizability violations the next time you run the client.
 echo 
+

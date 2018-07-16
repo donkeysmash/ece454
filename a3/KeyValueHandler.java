@@ -1,6 +1,5 @@
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.locks.*;
 
 import org.apache.thrift.*;
 import org.apache.thrift.server.*;
@@ -12,150 +11,156 @@ import org.apache.zookeeper.data.*;
 import org.apache.curator.*;
 import org.apache.curator.retry.*;
 import org.apache.curator.framework.*;
+import org.apache.curator.framework.api.*;
 
 
-public class KeyValueHandler implements KeyValueService.Iface {
-    private Map<String, String> myMap;
-    private CuratorFramework curClient;
-    private String zkNode;
-    private String host;
-    private int port;
-    private int count;
-    private int fail_count;
-    private ReadWriteLock lock = new ReentrantReadWriteLock();
+public class KeyValueHandler implements KeyValueService.Iface, CuratorWatcher {
+  private Map<String, String> myMap;
+  private CuratorFramework curClient;
+  private String zkNode;
+  private String host;
+  private int port;
+  private String primaryAddress;
+  private Map<String, Boolean> backupAddresses;
+  private boolean isPrimary;
 
+  private Set<String> keyLocks = new HashSet<>();
 
-    public KeyValueHandler(String host, int port, CuratorFramework curClient, String zkNode) {
-        this.count = 0;
-        this.fail_count =0;
-        this.host = host;
-        this.port = port;
-        this.curClient = curClient;
-        this.zkNode = zkNode;
-        myMap = new ConcurrentHashMap<String, String>();    
+  public KeyValueHandler(String host, int port, CuratorFramework curClient, String zkNode) {
+    this.host = host;
+    this.port = port;
+    this.curClient = curClient;
+    this.zkNode = zkNode;
+    this.myMap = new ConcurrentHashMap<String, String>();
+    this.backupAddresses = new HashMap<>();
+    try {
+      this.curClient.getChildren().usingWatcher(this).forPath(this.zkNode);
+    } catch (Exception e) {
+      System.out.println(e.toString());
     }
+  }
 
-    public String get(String key) throws org.apache.thrift.TException
-    {   
-        lock.readLock().lock();
-        String ret = myMap.get(key);
-        lock.readLock().unlock();
-        if (ret == null)
-            return "";
-        else
-            return ret;
-    }
+  public String get(String key) throws org.apache.thrift.TException {
+    String ret = myMap.get(key);
+    if (ret == null)
+      return "";
+    else
+      return ret;
+  }
 
-    public void put(String key, String value) throws org.apache.thrift.TException
-    {
-        lock.writeLock().lock();
-        try{
-            myMap.put(key, value);
+  public void put(String key, String value) throws org.apache.thrift.TException {
+    myMap.put(key, value);
+    if (this.isPrimary && this.backupAddresses.size() > 0) {
+      try {
+        this.lockKey(key);
+        for (String backupAddress : this.backupAddresses.keySet()) {
+          // TODO make this concurrent
+          String[] splited = backupAddress.split(":");
+          TSocket s = new TSocket(splited[0], Integer.parseInt(splited[1]));
+          TTransport t = new TFramedTransport(s);
+          TProtocol p = new TBinaryProtocol(t);
+          t.open();
+          KeyValueService.Client backupClient = new KeyValueService.Client(p);
+          backupClient.put(key, value);
+          t.close();
         }
-        catch(Exception e){
-            lock.writeLock().unlock();
-            fail_count++;
-            // System.out.println("something went wrong in put......." + e);
-            // System.out.println("fail_count in regular put.........." + fail_count);
-            // System.out.println("key : " + key);
-            // System.out.println("value : " + value);
-        }finally{
-            lock.writeLock().unlock();
-            put2(key,value);
+      } catch (Exception e) {
+        System.out.println("Error in put " + e.toString());
+      } finally {
+        this.unlockKey(key);
+      }
+    }
+  }
+
+  public void copyMap(Map<String, String> input) throws org.apache.thrift.TException {
+    System.out.println("copyMap -- size: " + input.size());
+    myMap.putAll(input);
+  }
+
+  synchronized private void replicateData() {
+    if (this.isPrimary) {
+      for (String backupAddress : this.backupAddresses.keySet()) {
+        if (!this.backupAddresses.get(backupAddress)) {
+          System.out.println("First time seeing backup " + backupAddress + " - try replicate");
+          try {
+            String[] splited = backupAddress.split(":");
+            TSocket s = new TSocket(splited[0], Integer.parseInt(splited[1]));
+            TTransport t = new TFramedTransport(s);
+            TProtocol p = new TBinaryProtocol(t);
+            t.open();
+            KeyValueService.Client backupClient = new KeyValueService.Client(p);
+            backupClient.copyMap(myMap);
+            this.backupAddresses.put(backupAddress, true);
+            t.close();
+          } catch (Exception e) {
+            System.out.println("replicate data ERROR " + e.toString());
+          }
+        } else {
+          System.out.println("already replicated " + backupAddress);
         }
-        // System.out.println("map size : " + myMap.size());
-        count++;
+      }
     }
+  }
 
-    public void put2(String key, String value) throws org.apache.thrift.TException{
-        lock.writeLock().lock();
-        try{
-            List<String> children = curClient.getChildren().forPath(zkNode);
-            Collections.sort(children);
-            if( children.size() > 1 ){
-                byte[] data = curClient.getData().forPath(zkNode + "/" + children.get(1));
-                String strData = new String(data);
-                String[] primary = strData.split(":");
-                TSocket sock = new TSocket(primary[0], Integer.parseInt(primary[1]));
-                sock.getSocket().setReuseAddress(true);
-                sock.getSocket().setSoLinger(true, 0);
-                TTransport transport = new TFramedTransport(sock);
-                transport.open();
-                TProtocol protocol = new TBinaryProtocol(transport);
-                KeyValueService.Client replication = new KeyValueService.Client(protocol);
-                // lock.writelLock().lock();
-                replication.putReplica(key, value);
-                // lock.writelLock().unlock();
-                transport.close();
-            }   
-            else{
-                // System.out.println("There isn't a replication node! : count : " + count);
-            }
-        } catch (Exception e) {
-            lock.writeLock().unlock();
-            fail_count++;
-            // System.out.println("something went wrong in put......." + e);
-            // System.out.println("fail_count......." + fail_count);
-            // System.out.println("key : " + key);
-            // System.out.println("value : " + value);
-        } finally{
-
-            lock.writeLock().unlock();
-        }
+  private void unlockKey(String key) {
+    synchronized (this.keyLocks) {
+      this.keyLocks.remove(key);
+      this.keyLocks.notifyAll();
     }
+  }
 
-    public void putReplica(String key, String value) throws org.apache.thrift.TException{
-        // lock.lock();
-        lock.writeLock().lock();
-        try{
-            // lock.lock();
-            // lock.writelLock().lock();
-            myMap.put(key, value);
-            // System.out.println("map size : " + myMap.size());
-        } catch (Exception e) {
-            lock.writeLock().unlock();
-            System.out.println("something went wrong in putReplica......." + e);
-        } finally{
-            lock.writeLock().unlock();
-            // lock.unlock();
-        }
-
+  private void lockKey(String key) throws Exception {
+    synchronized (this.keyLocks) {
+      this.keyLocks.add(key);
+      while (this.keyLocks.contains(key)) {
+        this.keyLocks.wait();
+      }
     }
+  }
 
-    public void copySnapshot() throws org.apache.thrift.TException{
-        lock.writeLock().lock();
-        try{
-            System.out.println("************COPY SNAPSHOT*********************************");
-            List<String> children = curClient.getChildren().forPath(zkNode);
-            Collections.sort(children);
-            byte[] data = curClient.getData().forPath(zkNode + "/" + children.get(0));
-            String strData = new String(data);
-            String[] primary = strData.split(":");
-            System.out.println("host address " + primary.toString());
-            TSocket sock = new TSocket(primary[0], Integer.parseInt(primary[1]));
-            sock.getSocket().setReuseAddress(true);
-            sock.getSocket().setSoLinger(true, 0);
-            TTransport transport = new TFramedTransport(sock);
-            transport.open();
-            TProtocol protocol = new TBinaryProtocol(transport);
-            KeyValueService.Client primary2 = new KeyValueService.Client(protocol);
-            // lock.writeLock().lock();
-            myMap = primary2.getSnapshot();
-            // lock.writeLock().unlock();
-            System.out.println("myMap size from primary : " + myMap.size());
-            transport.close();
-        } catch(Exception e){
-            lock.writeLock().unlock();
-            System.out.println("something went wrong in copySnapshot...." + e);
-        } finally{
-            lock.writeLock().unlock();
 
-        }
+  private List<String> getZKChildren() throws Exception {
+    while (true) {
+      this.curClient.sync();
+      List<String> children =
+        this.curClient.getChildren().usingWatcher(this).forPath(this.zkNode);
+      if (children.size() == 0) {
+        System.out.println("No children found");
+        Thread.sleep(100);
+        continue;
+      }
+      Collections.sort(children);
+      return children;
     }
+  }
 
-    public Map<String, String> getSnapshot() throws org.apache.thrift.TException{
-        System.out.println("***********GET SNAPSHOT*********************************");
-        System.out.println("myMap size from primary : " + myMap.size());
-        return myMap;
+  private void updatePrimaryAddress(List<String> zks) throws Exception {
+    byte[] data = this.curClient.getData().forPath(this.zkNode + "/" + zks.get(0));
+    this.primaryAddress = new String(data);
+  }
+  private void updateBackupAddresses(List<String> zks) throws Exception {
+    this.backupAddresses.remove(this.primaryAddress);
+    for (int i = 1; i < zks.size(); ++i) {
+      byte[] data = this.curClient.getData().forPath(this.zkNode + "/" + zks.get(i));
+      String backupAddress = new String(data);
+      if (!this.backupAddresses.containsKey(backupAddress)) {
+        this.backupAddresses.put(backupAddress, false);
+      }
     }
+  }
+
+  synchronized public void process(WatchedEvent event) {
+    System.out.println("ZooKeeper event " + event);
+    try {
+      List<String> zkChildren = getZKChildren();
+      System.out.println("All current " + zkChildren.size() + " children: " + String.join(", ", zkChildren));
+      this.updatePrimaryAddress(zkChildren);
+      this.updateBackupAddresses(zkChildren);
+      this.isPrimary = (this.host + ":" + this.port).equals(this.primaryAddress);
+      this.replicateData();
+    } catch (Exception e) {
+      System.out.println("Unable to determine primary " + e.toString());
+    }
+  }
+
 }
