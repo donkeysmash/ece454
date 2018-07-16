@@ -23,6 +23,7 @@ public class KeyValueHandler implements KeyValueService.Iface, CuratorWatcher {
   private String primaryAddress;
   private Map<String, Boolean> backupAddresses;
   private boolean isPrimary;
+  private Map<String, KeyValueService.Client> backupClients;
 
   private Set<String> keyLocks = new HashSet<>();
 
@@ -33,6 +34,7 @@ public class KeyValueHandler implements KeyValueService.Iface, CuratorWatcher {
     this.zkNode = zkNode;
     this.myMap = new ConcurrentHashMap<String, String>();
     this.backupAddresses = new HashMap<>();
+    this.backupClients = new HashMap<>();
     try {
       this.curClient.getChildren().usingWatcher(this).forPath(this.zkNode);
     } catch (Exception e) {
@@ -54,15 +56,18 @@ public class KeyValueHandler implements KeyValueService.Iface, CuratorWatcher {
       try {
         this.lockKey(key);
         for (String backupAddress : this.backupAddresses.keySet()) {
-          // TODO make this concurrent
-          String[] splited = backupAddress.split(":");
-          TSocket s = new TSocket(splited[0], Integer.parseInt(splited[1]));
-          TTransport t = new TFramedTransport(s);
-          TProtocol p = new TBinaryProtocol(t);
-          t.open();
-          KeyValueService.Client backupClient = new KeyValueService.Client(p);
-          backupClient.put(key, value);
-          t.close();
+          if (this.backupClients.containsKey(backupAddress)) {
+            this.backupClients.get(backupAddress).put(key, value);
+          } else {
+            String[] splited = backupAddress.split(":");
+            TSocket s = new TSocket(splited[0], Integer.parseInt(splited[1]));
+            TTransport t = new TFramedTransport(s);
+            TProtocol p = new TBinaryProtocol(t);
+            t.open();
+            KeyValueService.Client backupClient = new KeyValueService.Client(p);
+            backupClient.put(key, value);
+            this.backupClients.put(backupAddress, backupClient);
+          }
         }
       } catch (Exception e) {
         System.out.println("Error in put " + e.toString());
@@ -83,15 +88,19 @@ public class KeyValueHandler implements KeyValueService.Iface, CuratorWatcher {
         if (!this.backupAddresses.get(backupAddress)) {
           System.out.println("First time seeing backup " + backupAddress + " - try replicate");
           try {
-            String[] splited = backupAddress.split(":");
-            TSocket s = new TSocket(splited[0], Integer.parseInt(splited[1]));
-            TTransport t = new TFramedTransport(s);
-            TProtocol p = new TBinaryProtocol(t);
-            t.open();
-            KeyValueService.Client backupClient = new KeyValueService.Client(p);
-            backupClient.copyMap(myMap);
-            this.backupAddresses.put(backupAddress, true);
-            t.close();
+            if (this.backupClients.containsKey(backupAddress)) {
+              this.backupClients.get(backupAddress).copyMap(myMap);
+            } else {
+              String[] splited = backupAddress.split(":");
+              TSocket s = new TSocket(splited[0], Integer.parseInt(splited[1]));
+              TTransport t = new TFramedTransport(s);
+              TProtocol p = new TBinaryProtocol(t);
+              t.open();
+              KeyValueService.Client backupClient = new KeyValueService.Client(p);
+              backupClient.copyMap(myMap);
+              this.backupClients.put(backupAddress, backupClient);
+              this.backupAddresses.put(backupAddress, true);
+            }
           } catch (Exception e) {
             System.out.println("replicate data ERROR " + e.toString());
           }
@@ -111,10 +120,10 @@ public class KeyValueHandler implements KeyValueService.Iface, CuratorWatcher {
 
   private void lockKey(String key) throws Exception {
     synchronized (this.keyLocks) {
-      this.keyLocks.add(key);
       while (this.keyLocks.contains(key)) {
         this.keyLocks.wait();
       }
+      this.keyLocks.add(key);
     }
   }
 
