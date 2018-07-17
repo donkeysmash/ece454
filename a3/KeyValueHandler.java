@@ -55,20 +55,18 @@ public class KeyValueHandler implements KeyValueService.Iface, CuratorWatcher {
         this.unlockKey(key);
       }
     } else {
-      String ret = myMap.get(key);
-      if (ret == null) {
-        return "";
-      }
-      return ret;
+      throw new TException();
     }
     return "";
   }
 
   public void put(String key, String value) throws org.apache.thrift.TException {
-    myMap.put(key, value);
-    if (this.isPrimary && this.backupAddresses.size() > 0) {
+    //if (this.isPrimary && this.backupAddresses.size() > 0) {
       try {
         this.lockKey(key);
+        
+        myMap.put(key, value);
+        if (this.backupAddresses.size() > 0) {
         for (String backupAddress : this.backupAddresses.keySet()) {
           // TODO make this concurrent
           String[] splited = backupAddress.split(":");
@@ -77,15 +75,30 @@ public class KeyValueHandler implements KeyValueService.Iface, CuratorWatcher {
           TProtocol p = new TBinaryProtocol(t);
           t.open();
           KeyValueService.Client backupClient = new KeyValueService.Client(p);
-          backupClient.put(key, value);
+          backupClient.putBackup(key, value);
           t.close();
+        }
         }
       } catch (Exception e) {
         //System.out.println("Error in put " + e.toString());
       } finally {
         this.unlockKey(key);
       }
-    }
+    //}
+  }
+    
+  public void putBackup(String key, String value) throws org.apache.thrift.TException {
+      if (this.isPrimary) {
+          throw new TException();
+      } else {
+        try {
+          this.lockKey(key);
+          myMap.put(key, value);
+        } catch(Exception e) {
+          this.unlockKey(key);
+        }
+      }
+  
   }
 
   public void copyMap(Map<String, String> input) throws org.apache.thrift.TException {
