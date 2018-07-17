@@ -1,5 +1,7 @@
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.locks.ReentrantLock;
+
 
 import org.apache.thrift.*;
 import org.apache.thrift.server.*;
@@ -23,6 +25,7 @@ public class KeyValueHandler implements KeyValueService.Iface, CuratorWatcher {
   private String primaryAddress;
   private Map<String, Boolean> backupAddresses;
   private boolean isPrimary;
+  final ReentrantLock rl = new ReentrantLock();
 
   private Set<String> keyLocks = new HashSet<>();
 
@@ -62,18 +65,21 @@ public class KeyValueHandler implements KeyValueService.Iface, CuratorWatcher {
 
   public void put(String key, String value) throws org.apache.thrift.TException {
     try {
-      this.lockKey(key);
-      myMap.put(key, value);
-      if (this.backupAddresses.size() > 0) {
-        for (String backupAddress : this.backupAddresses.keySet()) {
-          String[] splited = backupAddress.split(":");
-          TSocket s = new TSocket(splited[0], Integer.parseInt(splited[1]));
-          TTransport t = new TFramedTransport(s);
-          TProtocol p = new TBinaryProtocol(t);
-          t.open();
-          KeyValueService.Client backupClient = new KeyValueService.Client(p);
-          backupClient.putBackup(key, value);
-          t.close();
+      if (!rl.isLocked()) {
+
+        this.lockKey(key);
+        myMap.put(key, value);
+        if (this.backupAddresses.size() > 0) {
+          for (String backupAddress : this.backupAddresses.keySet()) {
+            String[] splited = backupAddress.split(":");
+            TSocket s = new TSocket(splited[0], Integer.parseInt(splited[1]));
+            TTransport t = new TFramedTransport(s);
+            TProtocol p = new TBinaryProtocol(t);
+            t.open();
+            KeyValueService.Client backupClient = new KeyValueService.Client(p);
+            backupClient.putBackup(key, value);
+            t.close();
+          }
         }
       }
     } catch (Exception e) {
@@ -97,7 +103,13 @@ public class KeyValueHandler implements KeyValueService.Iface, CuratorWatcher {
   }
 
   public void copyMap(Map<String, String> input) throws org.apache.thrift.TException {
-    myMap.putAll(input);
+    rl.lock();
+    try {
+      myMap.putAll(input);
+    } catch (Exception e) {
+    } finally  {
+      rl.unlock();
+    }
     System.out.println("copyMap -- size: " + input.size());
   }
 
