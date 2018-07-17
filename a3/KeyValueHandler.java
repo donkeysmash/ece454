@@ -50,7 +50,7 @@ public class KeyValueHandler implements KeyValueService.Iface, CuratorWatcher {
         }
         return ret;
       } catch (Exception e) {
-
+        //System.out.println("get error " + e.toString());
       } finally {
         this.unlockKey(key);
       }
@@ -61,14 +61,11 @@ public class KeyValueHandler implements KeyValueService.Iface, CuratorWatcher {
   }
 
   public void put(String key, String value) throws org.apache.thrift.TException {
-    //if (this.isPrimary && this.backupAddresses.size() > 0) {
-      try {
-        this.lockKey(key);
-        
-        myMap.put(key, value);
-        if (this.backupAddresses.size() > 0) {
+    try {
+      this.lockKey(key);
+      myMap.put(key, value);
+      if (this.backupAddresses.size() > 0) {
         for (String backupAddress : this.backupAddresses.keySet()) {
-          // TODO make this concurrent
           String[] splited = backupAddress.split(":");
           TSocket s = new TSocket(splited[0], Integer.parseInt(splited[1]));
           TTransport t = new TFramedTransport(s);
@@ -78,32 +75,30 @@ public class KeyValueHandler implements KeyValueService.Iface, CuratorWatcher {
           backupClient.putBackup(key, value);
           t.close();
         }
-        }
-      } catch (Exception e) {
-        //System.out.println("Error in put " + e.toString());
-      } finally {
-        this.unlockKey(key);
       }
-    //}
+    } catch (Exception e) {
+      //System.out.println("Error in put " + e.toString());
+    } finally {
+      this.unlockKey(key);
+    }
   }
-    
+
   public void putBackup(String key, String value) throws org.apache.thrift.TException {
-      if (this.isPrimary) {
-          throw new TException();
-      } else {
-        try {
-          this.lockKey(key);
-          myMap.put(key, value);
-        } catch(Exception e) {
-          this.unlockKey(key);
-        }
+    if (this.isPrimary) {
+      throw new TException();
+    } else {
+      try {
+        myMap.put(key, value);
+      } catch (Exception e) {
+        //System.out.println("Error in putBackup" + e.toString());
       }
-  
+    }
+
   }
 
   public void copyMap(Map<String, String> input) throws org.apache.thrift.TException {
-    System.out.println("copyMap -- size: " + input.size());
     myMap.putAll(input);
+    System.out.println("copyMap -- size: " + input.size());
   }
 
   synchronized private void replicateData() {
@@ -113,16 +108,16 @@ public class KeyValueHandler implements KeyValueService.Iface, CuratorWatcher {
           System.out.println("First time seeing backup " + backupAddress + " - try replicate");
           try {
             String[] splited = backupAddress.split(":");
+            this.backupAddresses.put(backupAddress, true);
             TSocket s = new TSocket(splited[0], Integer.parseInt(splited[1]));
             TTransport t = new TFramedTransport(s);
             TProtocol p = new TBinaryProtocol(t);
             t.open();
             KeyValueService.Client backupClient = new KeyValueService.Client(p);
             backupClient.copyMap(myMap);
-            this.backupAddresses.put(backupAddress, true);
             t.close();
           } catch (Exception e) {
-            System.out.println("replicate data ERROR " + e.toString());
+            //System.out.println("replicate data ERROR " + e.toString());
           }
         } else {
           System.out.println("already replicated " + backupAddress);
@@ -186,6 +181,11 @@ public class KeyValueHandler implements KeyValueService.Iface, CuratorWatcher {
       this.updatePrimaryAddress(zkChildren);
       this.updateBackupAddresses(zkChildren);
       this.isPrimary = (this.host + ":" + this.port).equals(this.primaryAddress);
+      if (this.isPrimary) {
+        System.out.println("THIS IS PRIMARY NOW");
+      } else {
+        System.out.println("SECONDARY SERVER");
+      }
       this.replicateData();
     } catch (Exception e) {
       System.out.println("Unable to determine primary " + e.toString());
