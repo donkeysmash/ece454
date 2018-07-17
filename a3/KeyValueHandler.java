@@ -41,11 +41,27 @@ public class KeyValueHandler implements KeyValueService.Iface, CuratorWatcher {
   }
 
   public String get(String key) throws org.apache.thrift.TException {
-    String ret = myMap.get(key);
-    if (ret == null)
-      return "";
-    else
+    if (this.isPrimary) {
+      try {
+        this.lockKey(key);
+        String ret = myMap.get(key);
+        if (ret == null) {
+          return "";
+        }
+        return ret;
+      } catch (Exception e) {
+
+      } finally {
+        this.unlockKey(key);
+      }
+    } else {
+      String ret = myMap.get(key);
+      if (ret == null) {
+        return "";
+      }
       return ret;
+    }
+    return "";
   }
 
   public void put(String key, String value) throws org.apache.thrift.TException {
@@ -65,7 +81,7 @@ public class KeyValueHandler implements KeyValueService.Iface, CuratorWatcher {
           t.close();
         }
       } catch (Exception e) {
-        System.out.println("Error in put " + e.toString());
+        //System.out.println("Error in put " + e.toString());
       } finally {
         this.unlockKey(key);
       }
@@ -111,10 +127,10 @@ public class KeyValueHandler implements KeyValueService.Iface, CuratorWatcher {
 
   private void lockKey(String key) throws Exception {
     synchronized (this.keyLocks) {
-      this.keyLocks.add(key);
       while (this.keyLocks.contains(key)) {
         this.keyLocks.wait();
       }
+      this.keyLocks.add(key);
     }
   }
 
