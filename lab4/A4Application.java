@@ -5,14 +5,24 @@ import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.kstream.KStream;
+import org.apache.kafka.streams.kstream.KGroupedStream;
 import org.apache.kafka.streams.kstream.KTable;
+import org.apache.kafka.streams.kstream.GlobalKTable;
+import org.apache.kafka.streams.kstream.KGroupedTable;
 import org.apache.kafka.streams.kstream.KeyValueMapper;
 import org.apache.kafka.streams.kstream.Materialized;
 import org.apache.kafka.streams.kstream.Produced;
+import org.apache.kafka.streams.kstream.Serialized;
 import org.apache.kafka.streams.kstream.TimeWindows;
+import org.apache.kafka.streams.state.KeyValueBytesStoreSupplier;
 import org.apache.kafka.streams.state.KeyValueStore;
+import org.apache.kafka.streams.state.ReadOnlyKeyValueStore;
+import org.apache.kafka.streams.state.QueryableStoreTypes;
+import org.apache.kafka.streams.state.QueryableStoreType;
+import org.apache.kafka.streams.errors.InvalidStateStoreException;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Properties;
 
 
@@ -46,6 +56,48 @@ public class A4Application {
     // ...
     // ...to(outputTopic);
 
+    KStream<String, String> studentStream = builder.stream(studentTopic);
+    KStream<String, String> classroomStream = builder.stream(classroomTopic);
+
+    KTable<String, Long> capacityTable =
+      classroomStream.groupByKey()
+                     .reduce((x, y) -> y)
+                     .mapValues(x -> Long.parseLong(x));
+
+    KTable<String, Long> occupancyTable =
+      studentStream.groupByKey()
+                   .reduce((x, y) -> y)
+                   .groupBy((studentId, roomId) -> KeyValue.pair(roomId.toString(), studentId))
+                   .count();
+
+    KStream<String, RoomInfo> occupancyChangeStream = occupancyTable.toStream().leftJoin(capacityTable,
+      (occupants, capacity) -> new RoomInfo(occupants, capacity));
+
+    KStream<String, RoomInfo> capacityChangeStream = capacityTable.toStream().leftJoin(occupancyTable,
+      (capacity, occupants) -> new RoomInfo(occupants, capacity));
+
+    KStream<String, RoomInfo> changeInfoStream = occupancyChangeStream.merge(capacityChangeStream);
+
+
+    KTable<String, Long> roomOverflow =
+      changeInfoStream.map((k, v) -> KeyValue.pair(k, v.getDifference()))
+                      .groupByKey(Serialized.with(Serdes.String(), Serdes.Long()))
+                      .reduce((x, y) -> y);
+
+    KStream<String, String> result =
+      changeInfoStream.join(roomOverflow, (changeInfo, numOverflowing) -> new OverflowInfo(changeInfo, numOverflowing))
+                      .filter((k, v) -> {
+                        RoomInfo rmInfo = v.getRoomInfo();
+                        return rmInfo.isOverflowing() || (rmInfo.isAtCapacity() && v.getAmount() > 0L);
+                      })
+                      .map((k, v) -> {
+                        RoomInfo rmInfo = v.getRoomInfo();
+                        String toPrint = rmInfo.isAtCapacity() ? "OK" : rmInfo.getOccupants();
+                        return KeyValue.pair(k, toPrint);
+                      });
+
+    result.to(outputTopic);
+
     KafkaStreams streams = new KafkaStreams(builder.build(), props);
 
     // this line initiates processing
@@ -54,4 +106,61 @@ public class A4Application {
     // shutdown hook for Ctrl+C
     Runtime.getRuntime().addShutdownHook(new Thread(streams::close));
   }
+
+  static class OverflowInfo {
+    RoomInfo rmInfo;
+    Long amount;
+
+    OverflowInfo(RoomInfo rmInfo, Long amount) {
+      this.rmInfo = rmInfo;
+      this.amount = amount;
+    }
+
+    public Long getAmount() {
+      return this.amount;
+    }
+
+    public RoomInfo getRoomInfo() {
+      return this.rmInfo;
+    }
+
+    public String toString() {
+      String temp = this.rmInfo.toString();
+      return temp + " -- " + this.amount;
+    }
+  }
+
+  static class RoomInfo {
+    Long capacity;
+    Long occupants;
+
+    RoomInfo(Long occupying, Long capacity) {
+      this.occupants = occupying == null ? 0L : occupying;
+      this.capacity = capacity == null ? Long.MAX_VALUE : capacity;
+    }
+
+    public long getDifference() {
+      return this.occupants - this.capacity;
+    }
+
+    public String getOccupants() {
+      return String.valueOf(this.occupants);
+    }
+
+    public boolean isOverflowing() {
+      return this.occupants > this.capacity;
+    }
+
+    public boolean isAtCapacity() {
+      return this.occupants == this.capacity;
+    }
+
+    public String toString() {
+      if (this.capacity == Long.MAX_VALUE) {
+        return this.occupants + " infinite";
+      }
+      return this.occupants + " " + this.capacity;
+    }
+  }
 }
+
